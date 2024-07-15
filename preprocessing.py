@@ -3,8 +3,8 @@ import numpy as np
 import os
 
 class Preprocessor:
-    def __init__(self, parent_path, return_targets = True):
-        self.return_targets = return_targets
+    def __init__(self, parent_path, return_all = False):
+        self.return_all = return_all
         self.parent_path = parent_path
         self.tenv_path = os.path.join(parent_path, 'IGS14')
         self.sta_path = os.path.join(parent_path, 'stations')
@@ -16,6 +16,7 @@ class Preprocessor:
                           'Correlation EN', 'Correlation EV', 'Correlation NV']
         self.add_cols = self.tenv_cols[:]
         self.add_cols[6:6] = ['Longitude']
+        self.cols_by_count = {16: self.tenv_cols, 17: self.add_cols} # to get rid of the additional conditions
         self.target_cols = ['Decimal Year', 'Delta E', 'Delta N', 'Delta V']
 
     def read_tenv_file(self, file_name):
@@ -24,17 +25,17 @@ class Preprocessor:
             """
             full_path = os.path.join(self.tenv_path, file_name)
             try:
-                df = pd.read_csv(full_path, delim_whitespace=True, header=None, index_col=False)
-                if len(df.columns) == 16:
-                    df.columns = self.tenv_cols
-                elif len(df.columns) == 17:
-                    # we should ask this to fatih hoca
-                    df.columns = self.add_cols
-                else:
+                # read the first row to get column count
+                temp_df = pd.read_csv(full_path, delim_whitespace=True, header=None, index_col=False, nrows=1)
+                col_count = len(temp_df.columns)
+                # only the target columns are loaded due to memory efficiency
+                df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_count], usecols=self.target_cols)
+                if self.return_all:
+                    # return all of the available columns
+                    df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_count])
+                if col_count not in self.cols_by_count:
                     # check if there're any outliers remaining
-                    print(f"Unexpected number of columns while reading {file_name}: {len(df.columns)}")      
-                if self.return_targets:
-                    df = df[self.target_cols]
+                    print(f"Unexpected number of columns while reading {file_name}: {len(df.columns)}")              
                 # we can apply normalization and other transformations here but i'll check the performance differences 
                 return df
             except FileNotFoundError:
