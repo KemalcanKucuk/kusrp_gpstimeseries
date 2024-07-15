@@ -25,15 +25,14 @@ class Preprocessor:
             """
             full_path = os.path.join(self.tenv_path, file_name)
             try:
-                # read the first row to get column count
-                temp_df = pd.read_csv(full_path, delim_whitespace=True, header=None, index_col=False, nrows=1)
-                col_count = len(temp_df.columns)
+                temp_df = pd.read_csv(full_path, delim_whitespace=True, header=None, index_col=False, nrows=1) # read the first row to get column count
+                col_n = len(temp_df.columns)
                 # only the target columns are loaded due to memory efficiency
-                df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_count], usecols=self.target_cols)
+                df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_n], usecols=self.target_cols)
                 if self.return_all:
                     # return all of the available columns
-                    df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_count])
-                if col_count not in self.cols_by_count:
+                    df = pd.read_csv(full_path, delim_whitespace=True, index_col=False, names=self.cols_by_count[col_n])
+                if col_n not in self.cols_by_count:
                     # check if there're any outliers remaining
                     print(f"Unexpected number of columns while reading {file_name}: {len(df.columns)}")              
                 # we can apply normalization and other transformations here but i'll check the performance differences 
