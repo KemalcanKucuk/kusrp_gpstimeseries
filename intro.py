@@ -19,6 +19,8 @@ def main():
     
     elif hostname == 'Kemalcans-MacBook-Pro.local':
         parent_path = '/Users/kemalcankucuk/Documents/kuis-matam-summerproject/geodesy_data'
+    elif hostname == 'Zeyneps-MacBook-Pro-2.local':
+        parent_path = '/Users/zeynepaydin/geodesy.unr.edu/gps_timeseries/tenv/'
     else:
         parent_path = '/default/path/to/data'
 
