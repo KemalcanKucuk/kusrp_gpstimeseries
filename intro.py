@@ -19,7 +19,7 @@ def main():
     
     elif hostname == 'Kemalcans-MacBook-Pro.local':
         parent_path = '/Users/kemalcankucuk/Documents/kuis-matam-summerproject/geodesy_data'
-    elif hostname == 'Zeyneps-MacBook-Pro-2.local':
+    elif hostname == 'Zeyneps-MacBook-Pro-2.local' or hostname == "Zeyneps-MBP-2.home":
         parent_path = '/Users/zeynepaydin/geodesy.unr.edu/gps_timeseries/tenv/'
     else:
         parent_path = '/default/path/to/data'
@@ -41,18 +41,18 @@ def main():
     fig.suptitle('GPS Timeseries Data', fontsize=16)
     index = [0]  # Mutable index to track the current station
     print(f"Currently, {100 * len(stations_with_gaps) / len(tenvs):.2f}% of the stations are being filtered out with a gap tolerance of {gap_tolerance}")
-    
+
     def next_station(event):
         index[0] = (index[0] + 1) % len(filtered_tenvs)
-        station_name = tenv_utils.get_station_name_by_index(pre.tenvs, index[0])
+        station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
         plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
 
     def prev_station(event):
         index[0] = (index[0] - 1) % len(filtered_tenvs)
-        station_name = tenv_utils.get_station_name_by_index(pre.tenvs, index[0])
+        station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
         plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
 
-    plot_tenv_data(axs, filtered_tenvs[index[0]], tenv_utils.get_station_name_by_index(pre.tenvs, index[0]))
+    plot_tenv_data(axs, filtered_tenvs[index[0]], filtered_tenvs[index[0]]['Station ID'].iloc[0])
 
     plt.subplots_adjust(bottom=0.15)
 
@@ -65,6 +65,7 @@ def main():
     bprev.on_clicked(prev_station)
 
     plt.show()
+
 
 def plot_tenv_data(axs, tenv_df, station_name):
     """Plot the Delta E, Delta N, and Delta V columns from the tenv dataframe and add navigation buttons."""
