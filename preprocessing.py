@@ -17,7 +17,7 @@ class Preprocessor:
         self.add_cols = self.tenv_cols[:]
         self.add_cols[6:6] = ['Longitude']
         self.cols_by_count = {16: self.tenv_cols, 17: self.add_cols}  # to get rid of the additional conditions
-        self.target_cols = ['Decimal Year', 'Delta E', 'Delta N', 'Delta V']
+        self.target_cols = ['Station ID', 'Decimal Year', 'Delta E', 'Delta N', 'Delta V']
     
     # @TODO: can move read/load functions to utils
     def read_tenv_file(self, file_name):
@@ -36,7 +36,8 @@ class Preprocessor:
             # normalize the columns
             #norm = lambda col : (col - col.min()) / (col.max() - col.min()) # scaling
             norm = lambda col : (col - col.mean()) / (col.std() + 1e7) # zero mean unit var
-            df[df.columns[1:]] = df[df.columns[1:]].apply(norm)
+            ts_index = df.columns.get_loc("Delta E")
+            df[df.columns[ts_index:]] = df[df.columns[ts_index:]].apply(norm)
            # print(df[df.columns[1:]])
             return df
         except FileNotFoundError:
