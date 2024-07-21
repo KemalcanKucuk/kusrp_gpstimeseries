@@ -5,6 +5,7 @@ import os
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Button
 import preprocessing as pr
+import tenv_utils
 
 def main():
     hostname = socket.gethostname()
@@ -13,8 +14,11 @@ def main():
     if hostname == 'Sarps-MBP':
         print("kral hoşgeldin.")
         parent_path = '/Users/sarpvulas/geodesy.unr.edu/gps_timeseries/tenv/'
-    elif hostname == 'other-computer-hostname':
-        parent_path = '/different/path/to/data'
+    elif hostname == 'Kemalcans-MacBook-Pro.local':
+        parent_path = '/Users/kemalcankucuk/Documents/kuis-matam-summerproject/geodesy_data'
+    
+    elif hostname == 'Kemalcans-MacBook-Pro.local':
+        parent_path = '/Users/kemalcankucuk/Documents/kuis-matam-summerproject/geodesy_data'
     else:
         parent_path = '/default/path/to/data'
 
@@ -25,30 +29,28 @@ def main():
     tenvs = pre.load_tenv_file_df()
 
     # If 1-1 mapping is required.
-    # pre.create_index_file_mapping()
-
-    # Convert decimal year to date for each DataFrame
-    for df in tenvs:
-        df['Date'] = df['Decimal Year'].apply(pre.decimal_year_to_date)
+    #pre.create_index_file_mapping()
 
     # Outlier points are deleted, series containing huge gaps are eliminated.
-    filtered_tenvs, stations_with_gaps = pre.ayikla_pirincin_tasini(tenvs)
+    gap_tolerance = 100
+    filtered_tenvs, stations_with_gaps = pre.apply_filtering(tenvs, gap_tolerance=gap_tolerance)
 
     fig, axs = plt.subplots(3, 1, figsize=(6, 9), sharex=True)
     fig.suptitle('GPS Timeseries Data', fontsize=16)
     index = [0]  # Mutable index to track the current station
-
+    print(f"Currently, {100 * len(stations_with_gaps) / len(tenvs):.2f}% of the stations are being filtered out with a gap tolerance of {gap_tolerance}")
+    
     def next_station(event):
         index[0] = (index[0] + 1) % len(filtered_tenvs)
-        station_name = pre.get_station_name_by_index(index[0])
+        station_name = tenv_utils.get_station_name_by_index(pre.tenvs, index[0])
         plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
 
     def prev_station(event):
         index[0] = (index[0] - 1) % len(filtered_tenvs)
-        station_name = pre.get_station_name_by_index(index[0])
+        station_name = tenv_utils.get_station_name_by_index(pre.tenvs, index[0])
         plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
 
-    plot_tenv_data(axs, filtered_tenvs[index[0]], pre.get_station_name_by_index(index[0]))
+    plot_tenv_data(axs, filtered_tenvs[index[0]], tenv_utils.get_station_name_by_index(pre.tenvs, index[0]))
 
     plt.subplots_adjust(bottom=0.15)
 
@@ -71,6 +73,8 @@ def plot_tenv_data(axs, tenv_df, station_name):
 
     # Plot Delta E
     axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'], label='Delta E', c='blue', s=10)
+    #diff, peaks = tenv_utils.displacement_detection(tenv_df['Delta E'])
+    #axs[0].scatter(tenv_df['Date'].iloc[peaks], tenv_df['Delta N'].iloc[peaks], color='red', marker='x', label='Peaks')
     axs[0].set_title(f'{station_name} Delta E')
     axs[0].set_ylabel('Delta E')
     axs[0].legend()
