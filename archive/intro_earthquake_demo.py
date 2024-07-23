@@ -23,18 +23,15 @@ def main():
 
     # Initialize the preprocessor
     pre = pr.Preprocessor(parent_path)
-
+    eqs = pre.load_eq_txt()
+    eq_stats = eqs['Station ID'].unique()
+    eq_stats = [s + '.tenv' for s in eq_stats]
     # Load 5% of the available tenv files by default as a list of DataFrames
-    tenvs = pre.load_tenv_file_df(pre.tenvs)
-
-    # If 1-1 mapping is required.
-    #pre.create_index_file_mapping()
-
+    tenvs = pre.load_tenv_file_df(eq_stats)
+    
     # Outlier points are deleted, series containing huge gaps are eliminated.
     gap_tolerance = 100
-    filtered_tenvs, stations_with_gaps = tenv_utils.apply_filtering(tenvs, gap_tolerance=gap_tolerance)
-    filtered_tenvs = tenv_utils.split_combined_df_to_list(filtered_tenvs)
-
+    filtered_tenvs, stations_with_gaps = pre.apply_filtering(tenvs, gap_tolerance=gap_tolerance)
     fig, axs = plt.subplots(3, 1, figsize=(6, 9), sharex=True)
     fig.suptitle('GPS Timeseries Data', fontsize=16)
     index = [0]  # Mutable index to track the current station
@@ -43,14 +40,14 @@ def main():
     def next_station(event):
         index[0] = (index[0] + 1) % len(filtered_tenvs)
         station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
-        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
+        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name, eqs)
 
     def prev_station(event):
         index[0] = (index[0] - 1) % len(filtered_tenvs)
         station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
-        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
+        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name, eqs)
 
-    plot_tenv_data(axs, filtered_tenvs[index[0]], filtered_tenvs[index[0]]['Station ID'].iloc[0])
+    plot_tenv_data(axs, filtered_tenvs[index[0]], filtered_tenvs[index[0]]['Station ID'].iloc[0], eqs)
 
     plt.subplots_adjust(bottom=0.15)
 
@@ -64,8 +61,7 @@ def main():
 
     plt.show()
 
-
-def plot_tenv_data(axs, tenv_df, station_name):
+def plot_tenv_data(axs, tenv_df, station_name, eq_events):
     """Plot the Delta E, Delta N, and Delta V columns from the tenv dataframe and add navigation buttons."""
 
     axs[0].cla()
@@ -74,8 +70,6 @@ def plot_tenv_data(axs, tenv_df, station_name):
 
     # Plot Delta E
     axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'], label='Delta E', c='blue', s=10)
-    #diff, peaks = tenv_utils.displacement_detection(tenv_df['Delta E'])
-    #axs[0].scatter(tenv_df['Date'].iloc[peaks], tenv_df['Delta N'].iloc[peaks], color='red', marker='x', label='Peaks')
     axs[0].set_title(f'{station_name} Delta E')
     axs[0].set_ylabel('Delta E')
     axs[0].legend()
@@ -96,6 +90,14 @@ def plot_tenv_data(axs, tenv_df, station_name):
     axs[2].legend()
     axs[2].grid(True)
 
+    # Filter earthquake events for the current station
+    station_events = eq_events[eq_events['Station ID'] == station_name]
+    
+    # Plot earthquake events on each axis
+    for ax in axs:
+        for _, event in station_events.iterrows():
+            ax.axvline(event['Date'], color='purple', linestyle='--', label='Earthquake Event')
+    
     plt.draw()
 
 if __name__ == '__main__':

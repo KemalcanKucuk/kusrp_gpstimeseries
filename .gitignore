@@ -164,5 +164,3 @@ tensorboard/
 *.log
 *.swp
 *.swo
-5minute.ipynb
-displacement_detection.ipynb
