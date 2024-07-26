@@ -212,7 +212,6 @@ class StationPlotApp(QMainWindow):
 if __name__ == '__main__':
     hostname = socket.gethostname()
     parent_path = constants.PATHS.get(hostname, '/default/path/to/data')
-
     app = QApplication(sys.argv)
     window = StationPlotApp(parent_path)
     window.show()
