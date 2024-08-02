@@ -23,6 +23,8 @@ class StationPlotApp(QMainWindow):
         self.parent_path = parent_path
         self.pre = pr.Preprocessor(parent_path)
 
+        self.filtered_tenvs_list = []
+
         self.create_plot()
         self.create_controls()
         self.create_input_fields()
