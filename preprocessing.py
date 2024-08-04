@@ -65,7 +65,7 @@ class Preprocessor:
         except Exception as e:
             print(f"An error occurred while reading {file_name}: {e}")
 
-    def load_tenv_file_df(self, tenvs, load_percentage=5):
+    def load_tenv_file_df(self, tenvs, load_percentage=20):
         '''Load the given percentage of the .tenv files according to the sorted file list.
 
         Args:

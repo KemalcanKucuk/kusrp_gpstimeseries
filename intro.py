@@ -3,7 +3,7 @@ import socket
 import pandas as pd
 import os
 from matplotlib import pyplot as plt
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button, TextBox
 import preprocessing as pr
 import tenv_utils
 
@@ -11,7 +11,7 @@ def main():
     hostname = socket.gethostname()
 
     # kendi hostnaminizi print ettirin ona göre path ekleyin.
-    if hostname == 'Sarps-MBP':
+    if hostname == 'Sarps-MacBook-Pro.local':
         print("kral hoşgeldin.")
         parent_path = '/Users/sarpvulas/geodesy.unr.edu/gps_timeseries/tenv/'
     elif hostname == 'Kemalcans-MacBook-Pro.local':
@@ -27,74 +27,120 @@ def main():
     # Load 5% of the available tenv files by default as a list of DataFrames
     tenvs = pre.load_tenv_file_df(pre.tenvs)
 
-    # If 1-1 mapping is required.
-    #pre.create_index_file_mapping()
-
     # Outlier points are deleted, series containing huge gaps are eliminated.
     gap_tolerance = 100
-    filtered_tenvs, stations_with_gaps = tenv_utils.apply_filtering(tenvs, gap_tolerance=gap_tolerance)
-    filtered_tenvs = tenv_utils.split_combined_df_to_list(filtered_tenvs)
+    method = 'lof'  # Choose the method to use: 'lof'
+    kwargs = {'n_neighbors': 20, 'contamination': 0.35}  # Additional parameters for the method
+    filtered_tenvs, stations_with_gaps, outlier_counts = tenv_utils.apply_filtering(tenvs, gap_tolerance=gap_tolerance,
+                                                                                    method=method, **kwargs)
+    filtered_tenvs_list = tenv_utils.split_combined_df_to_list(filtered_tenvs)
 
-    fig, axs = plt.subplots(3, 1, figsize=(6, 9), sharex=True)
+    fig, axs = plt.subplots(3, 2, figsize=(12, 9), sharex='col')
     fig.suptitle('GPS Timeseries Data', fontsize=16)
     index = [0]  # Mutable index to track the current station
-    print(f"Currently, {100 * len(stations_with_gaps) / len(tenvs):.2f}% of the stations are being filtered out with a gap tolerance of {gap_tolerance}")
+    print(
+        f"Currently, {100 * len(stations_with_gaps) / len(tenvs):.2f}% of the stations are being filtered out with a gap tolerance of {gap_tolerance}")
 
     def next_station(event):
-        index[0] = (index[0] + 1) % len(filtered_tenvs)
-        station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
-        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
+        index[0] = (index[0] + 1) % len(filtered_tenvs_list)
+        station_name = filtered_tenvs_list[index[0]]['Station ID'].iloc[0]
+        plot_tenv_data(axs, filtered_tenvs_list[index[0]], tenvs[tenvs['Station ID'] == station_name], station_name,
+                       outlier_counts)
 
     def prev_station(event):
-        index[0] = (index[0] - 1) % len(filtered_tenvs)
-        station_name = filtered_tenvs[index[0]]['Station ID'].iloc[0]
-        plot_tenv_data(axs, filtered_tenvs[index[0]], station_name)
+        index[0] = (index[0] - 1) % len(filtered_tenvs_list)
+        station_name = filtered_tenvs_list[index[0]]['Station ID'].iloc[0]
+        plot_tenv_data(axs, filtered_tenvs_list[index[0]], tenvs[tenvs['Station ID'] == station_name], station_name,
+                       outlier_counts)
 
-    plot_tenv_data(axs, filtered_tenvs[index[0]], filtered_tenvs[index[0]]['Station ID'].iloc[0])
+    def search_station(event):
+        station_name = text_box.text.upper()  # Convert input to uppercase
+        station_index = next((i for i, df in enumerate(filtered_tenvs_list) if df['Station ID'].iloc[0] == station_name), None)
+        if station_index is not None:
+            index[0] = station_index
+            plot_tenv_data(axs, filtered_tenvs_list[index[0]], tenvs[tenvs['Station ID'] == station_name], station_name,
+                           outlier_counts)
+        else:
+            print(f"Station {station_name} not found.")
 
-    plt.subplots_adjust(bottom=0.15)
+    plot_tenv_data(axs, filtered_tenvs_list[index[0]],
+                   tenvs[tenvs['Station ID'] == filtered_tenvs_list[index[0]]['Station ID'].iloc[0]],
+                   filtered_tenvs_list[index[0]]['Station ID'].iloc[0], outlier_counts)
+
+    plt.subplots_adjust(bottom=0.35)
 
     axprev = plt.axes([0.35, 0.02, 0.1, 0.04])
     axnext = plt.axes([0.55, 0.02, 0.1, 0.04])
+    axbox = plt.axes([0.35, 0.1, 0.3, 0.04])
+    axsearch = plt.axes([0.68, 0.1, 0.1, 0.04])
     bnext = Button(axnext, 'Next', color='lightgoldenrodyellow', hovercolor='0.975')
     bprev = Button(axprev, 'Previous', color='lightgoldenrodyellow', hovercolor='0.975')
+    text_box = TextBox(axbox, 'Search Station: ')
+    bsearch = Button(axsearch, 'SEARCH', color='lightgoldenrodyellow', hovercolor='0.975')
 
     bnext.on_clicked(next_station)
     bprev.on_clicked(prev_station)
+    bsearch.on_clicked(search_station)
+    text_box.on_submit(search_station)
 
     plt.show()
 
+def plot_tenv_data(axs, tenv_df_filtered, tenv_df_original, station_name, outlier_counts):
+    """Plot the Delta E, Delta N, and Delta V columns from the tenv dataframe with and without outliers removed."""
 
-def plot_tenv_data(axs, tenv_df, station_name):
-    """Plot the Delta E, Delta N, and Delta V columns from the tenv dataframe and add navigation buttons."""
+    # Clear previous plots
+    for ax in axs[:, 0]:
+        ax.cla()
+    for ax in axs[:, 1]:
+        ax.cla()
 
-    axs[0].cla()
-    axs[1].cla()
-    axs[2].cla()
+    outlier_count_e = outlier_counts.get(station_name, {}).get('Delta E', 0)
+    outlier_count_n = outlier_counts.get(station_name, {}).get('Delta N', 0)
+    outlier_count_v = outlier_counts.get(station_name, {}).get('Delta V', 0)
 
-    # Plot Delta E
-    axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'], label='Delta E', c='blue', s=10)
-    #diff, peaks = tenv_utils.displacement_detection(tenv_df['Delta E'])
-    #axs[0].scatter(tenv_df['Date'].iloc[peaks], tenv_df['Delta N'].iloc[peaks], color='red', marker='x', label='Peaks')
-    axs[0].set_title(f'{station_name} Delta E')
-    axs[0].set_ylabel('Delta E')
-    axs[0].legend()
-    axs[0].grid(True)
+    # Plot Delta E (original)
+    axs[0, 0].scatter(tenv_df_original['Date'], tenv_df_original['Delta E'], label='Delta E', c='blue', s=10)
+    axs[0, 0].set_title(f'{station_name} Delta E (Original)')
+    axs[0, 0].set_ylabel('Delta E')
+    axs[0, 0].legend()
+    axs[0, 0].grid(True)
 
-    # Plot Delta N
-    axs[1].scatter(tenv_df['Date'], tenv_df['Delta N'], label='Delta N', c='green', s=10)
-    axs[1].set_title(f'{station_name} Delta N')
-    axs[1].set_ylabel('Delta N')
-    axs[1].legend()
-    axs[1].grid(True)
+    # Plot Delta E (filtered)
+    axs[0, 1].scatter(tenv_df_filtered['Date'], tenv_df_filtered['Delta E'], label='Delta E', c='blue', s=10)
+    axs[0, 1].set_title(f'{station_name} Delta E (Outliers removed: {outlier_count_e})')
+    axs[0, 1].set_ylabel('Delta E')
+    axs[0, 1].legend()
+    axs[0, 1].grid(True)
 
-    # Plot Delta V
-    axs[2].scatter(tenv_df['Date'], tenv_df['Delta V'], label='Delta V', c='red', s=10)
-    axs[2].set_title(f'{station_name} Delta V')
-    axs[2].set_xlabel('Date')
-    axs[2].set_ylabel('Delta V')
-    axs[2].legend()
-    axs[2].grid(True)
+    # Plot Delta N (original)
+    axs[1, 0].scatter(tenv_df_original['Date'], tenv_df_original['Delta N'], label='Delta N', c='green', s=10)
+    axs[1, 0].set_title(f'{station_name} Delta N (Original)')
+    axs[1, 0].set_ylabel('Delta N')
+    axs[1, 0].legend()
+    axs[1, 0].grid(True)
+
+    # Plot Delta N (filtered)
+    axs[1, 1].scatter(tenv_df_filtered['Date'], tenv_df_filtered['Delta N'], label='Delta N', c='green', s=10)
+    axs[1, 1].set_title(f'{station_name} Delta N (Outliers removed: {outlier_count_n})')
+    axs[1, 1].set_ylabel('Delta N')
+    axs[1, 1].legend()
+    axs[1, 1].grid(True)
+
+    # Plot Delta V (original)
+    axs[2, 0].scatter(tenv_df_original['Date'], tenv_df_original['Delta V'], label='Delta V', c='red', s=10)
+    axs[2, 0].set_title(f'{station_name} Delta V (Original)')
+    axs[2, 0].set_xlabel('Date')
+    axs[2, 0].set_ylabel('Delta V')
+    axs[2, 0].legend()
+    axs[2, 0].grid(True)
+
+    # Plot Delta V (filtered)
+    axs[2, 1].scatter(tenv_df_filtered['Date'], tenv_df_filtered['Delta V'], label='Delta V', c='red', s=10)
+    axs[2, 1].set_title(f'{station_name} Delta V (Outliers removed: {outlier_count_v})')
+    axs[2, 1].set_xlabel('Date')
+    axs[2, 1].set_ylabel('Delta V')
+    axs[2, 1].legend()
+    axs[2, 1].grid(True)
 
     plt.draw()
 
