@@ -13,12 +13,13 @@ class StationPlotApp(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Station Plot App")
-        # Increase the window height for larger plots
         self.setGeometry(100, 100, 1200, 900)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
+
+        # Use a horizontal layout for the main layout
+        self.main_layout = QHBoxLayout(self.central_widget)
 
         self.parent_path = parent_path
         self.pre = pr.Preprocessor(parent_path)
@@ -27,36 +28,33 @@ class StationPlotApp(QMainWindow):
 
         self.create_plot()
         self.create_controls()
-        self.create_input_fields()
 
     def create_plot(self):
-        # Increase the figure height
         self.fig = Figure(figsize=(10, 9), dpi=100)
         self.axs = [self.fig.add_subplot(311), self.fig.add_subplot(
             312), self.fig.add_subplot(313)]
         self.canvas = FigureCanvas(self.fig)
-        self.layout.addWidget(self.canvas)
+        self.main_layout.addWidget(self.canvas)
 
     def create_controls(self):
-        control_layout = QHBoxLayout()
+        control_layout = QVBoxLayout()
 
-        self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search Station")
-        control_layout.addWidget(self.search_bar)
+        self.load_percentage_input = QLineEdit()
+        self.load_percentage_input.setPlaceholderText("5")
+        control_layout.addWidget(QLabel("Load Percentage"))
+        control_layout.addWidget(self.load_percentage_input)
 
-        search_button = QPushButton("Search")
-        search_button.clicked.connect(self.submit_search)
-        control_layout.addWidget(search_button)
+        self.magnitude_threshold_input = QLineEdit()
+        self.magnitude_threshold_input.setPlaceholderText(
+            "Enter magnitude threshold")
+        control_layout.addWidget(QLabel("Magnitude Threshold"))
+        control_layout.addWidget(self.magnitude_threshold_input)
 
-        prev_button = QPushButton("Previous")
-        prev_button.clicked.connect(self.prev_station)
-        control_layout.addWidget(prev_button)
-
-        next_button = QPushButton("Next")
-        next_button.clicked.connect(self.next_station)
-        control_layout.addWidget(next_button)
-
-        self.layout.addLayout(control_layout)
+        self.earthquake_count_input = QLineEdit()
+        self.earthquake_count_input.setPlaceholderText(
+            "Enter earthquake count")
+        control_layout.addWidget(QLabel("Earthquake Count"))
+        control_layout.addWidget(self.earthquake_count_input)
 
         # Station list
         self.station_list_widget = QListWidget()
@@ -66,35 +64,25 @@ class StationPlotApp(QMainWindow):
         scroll_area = QScrollArea()
         scroll_area.setWidget(self.station_list_widget)
         scroll_area.setWidgetResizable(True)
-        self.layout.addWidget(scroll_area)
+        control_layout.addWidget(scroll_area)
 
-    def create_input_fields(self):
-        form_layout = QFormLayout()
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search Station")
+        control_layout.addWidget(self.search_bar)
 
-        self.load_percentage_input = QLineEdit()
-        self.load_percentage_input.setPlaceholderText("5")
-        form_layout.addRow("Load Percentage", self.load_percentage_input)
+        search_button = QPushButton("Search")
+        search_button.clicked.connect(self.submit_search)
+        control_layout.addWidget(search_button)
 
-        self.magnitude_threshold_input = QLineEdit()
-        self.magnitude_threshold_input.setPlaceholderText(
-            "Enter magnitude threshold")
-        form_layout.addRow("Magnitude Threshold",
-                           self.magnitude_threshold_input)
-
-        self.earthquake_count_input = QLineEdit()
-        self.earthquake_count_input.setPlaceholderText(
-            "Enter earthquake count")
-        form_layout.addRow("Earthquake Count", self.earthquake_count_input)
-
-        self.plot_button = QPushButton("Plot")
-        self.plot_button.clicked.connect(self.load_data)
-        form_layout.addRow(self.plot_button)
+        self.load_plot_button = QPushButton("Load and Plot")
+        self.load_plot_button.clicked.connect(self.load_data)
+        control_layout.addWidget(self.load_plot_button)
 
         self.info_label = QLabel(
             "Load and filter data to see the details here.")
-        form_layout.addRow(self.info_label)
+        control_layout.addWidget(self.info_label)
 
-        self.layout.addLayout(form_layout)
+        self.main_layout.addLayout(control_layout)
 
     def load_data(self):
         load_percentage = int(self.load_percentage_input.text() or 5)
@@ -128,13 +116,13 @@ class StationPlotApp(QMainWindow):
             ax.clear()
         self.canvas.draw()
 
+        # Plot the first station's data if available
+        if self.filtered_tenvs_list:
+            self.plot_tenv_data(self.filtered_tenvs_list[0], self.filtered_tenvs_list[0]['Station ID'].iloc[0])
+
     def plot_tenv_data(self, tenv_df, station_name):
         for ax in self.axs:
             ax.clear()
-
-        # Print the station name and first few rows for debugging
-        print(f"Plotting data for station: {station_name}")
-        print(tenv_df.head())
 
         # Plot Delta E
         self.axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'],
@@ -164,14 +152,6 @@ class StationPlotApp(QMainWindow):
         # Filter earthquake events for the current station
         station_events = tenv_df[tenv_df['Event Magnitude'].notna()]
 
-        # Debug print to verify number of events
-        print(
-            f"Plotting {len(station_events)} earthquake events for station: {station_name}")
-
-        # Debug print to show event data
-        if not station_events.empty:
-            print(station_events[['Date', 'Event Magnitude', 'Event ID']])
-
         # Plot earthquake events on each axis if they exist
         if not station_events.empty:
             for ax in self.axs:
@@ -181,16 +161,6 @@ class StationPlotApp(QMainWindow):
 
         self.fig.tight_layout()
         self.canvas.draw()
-
-    def next_station(self):
-        self.index = (self.index + 1) % len(self.filtered_tenvs_list)
-        station_name = self.filtered_tenvs_list[self.index]['Station ID'].iloc[0]
-        self.plot_tenv_data(self.filtered_tenvs_list[self.index], station_name)
-
-    def prev_station(self):
-        self.index = (self.index - 1) % len(self.filtered_tenvs_list)
-        station_name = self.filtered_tenvs_list[self.index]['Station ID'].iloc[0]
-        self.plot_tenv_data(self.filtered_tenvs_list[self.index], station_name)
 
     def submit_search(self):
         station_name = self.search_bar.text().strip().upper()
