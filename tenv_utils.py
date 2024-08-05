@@ -72,7 +72,6 @@ def gap_filter(combined_df, gap_tolerance):
         filtered_df (pd.DataFrame): DataFrame of rows that aren't filtered out by the threshold.
         stations_with_gaps_df (pd.DataFrame): DataFrame of rows that are filtered out by the threshold.
     '''
-    combined_df['Date'] = strdate_to_datetime(combined_df['Date'])
     filtered_list = []
     stations_with_gaps = []
     
