@@ -84,6 +84,7 @@ class Preprocessor:
                 "No time series data available for the given stations.")
 
         combined_df = pd.concat(loaded_dfs, ignore_index=True)
+        combined_df['Date'] = tenv_utils.strdate_to_datetime(combined_df['Date'])
         return combined_df
 
     def load_eq_txt(self, target_cols=['Station ID', 'Date', 'Distance from Epicenter', 'Event Magnitude', 'Event ID']):
@@ -155,10 +156,31 @@ class Preprocessor:
         tenvs_df = self.load_tenv_file_df(
             tenvs=eq_stats, load_percentage=load_percentage)
 
-        combined_df, _ = tenv_utils.apply_filtering(
-            tenvs_df, gap_tolerance=gap_tolerance)
-        combined_df = combined_df.merge(eqs[['Station ID', 'Date', 'Event Magnitude', 'Event ID']],
-                                        on=['Station ID', 'Date'],
-                                        how='left')
+        
+        # append missing earthquake dates to the timeseries data with NaN values for the timeseries columns
+        all_stations_dfs = []
+        for station_id, station_df in tenvs_df.groupby('Station ID'):
+            station_eqs = eqs[eqs['Station ID'] == station_id]
+            missing_dates = station_eqs[~station_eqs['Date'].isin(station_df['Date'])]
+
+            if not missing_dates.empty:
+                missing_rows = pd.DataFrame({
+                    'Station ID': station_id,
+                    'Date': missing_dates['Date'],
+                    'Delta E': np.nan,
+                    'Delta N': np.nan,
+                    'Delta V': np.nan
+                })
+                station_df = pd.concat([station_df, missing_rows], ignore_index=True)
+
+            all_stations_dfs.append(station_df)
+
+        combined_tenvs_df = pd.concat(all_stations_dfs)
+        # combined_df, _, _ = tenv_utils.apply_filtering(tenvs_df, gap_tolerance=gap_tolerance)
+        combined_df = pd.merge(combined_tenvs_df, eqs[['Station ID', 'Date', 'Event ID', 'Event Magnitude']], on=['Station ID', 'Date'], how='left')
+        # sanity check
+        total_eqs = eqs['Event ID'].nunique()
+        loaded_eqs = combined_df['Event ID'].nunique()
+        print(f"\033[93mINFO: Loaded {loaded_eqs} of {total_eqs} earthquake events. \033[0m")
 
         return combined_df
