@@ -106,7 +106,7 @@ class Preprocessor:
         eqs['Date'] = tenv_utils.strdate_to_datetime(eqs['Date'])
         return eqs
 
-    def load_combined_df(self, gap_tolerance=1000, load_percentage=5, target_magnitude=None, eq_count=None):
+    def load_combined_df(self, gap_tolerance=1000, load_percentage=5, target_magnitude=None, eq_count=None, save=False):
         '''Load and filter combined dataframe of .tenv files based on specified conditions.
 
         This function extracts .tenv files that have earthquakes, applies various filtering conditions,
@@ -182,5 +182,10 @@ class Preprocessor:
         total_eqs = eqs['Event ID'].nunique()
         loaded_eqs = combined_df['Event ID'].nunique()
         print(f"\033[93mINFO: Loaded {loaded_eqs} of {total_eqs} earthquake events. \033[0m")
-
+        if save:
+            filename = f'loadp{load_percentage}' # @TODO: edit this so that it matches the called method arguments
+            filename = 'combined.csv'
+            filepath = os.path.join(self.parent_path, filename)
+            combined_df.to_csv(filepath, index=False)
+            print(f"\033[93mINFO: Successfully saved the combined dataframe to {filepath}. \033[0m")
         return combined_df

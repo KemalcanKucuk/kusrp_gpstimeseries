@@ -94,7 +94,7 @@ class StationPlotApp(QMainWindow):
         # Load and filter the data
         self.tenvs = self.pre.load_combined_df(load_percentage=load_percentage,
                                                target_magnitude=magnitude_threshold,
-                                               eq_count=earthquake_count)
+                                               eq_count=earthquake_count, save=True)
 
         self.filtered_tenvs_list = tenv_utils.split_combined_df_to_list(
             self.tenvs)
