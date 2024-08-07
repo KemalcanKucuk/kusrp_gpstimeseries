@@ -27,10 +27,19 @@ def main():
     # Load 5% of the available tenv files by default as a list of DataFrames
     tenvs = pre.load_tenv_file_df(pre.tenvs)
 
+    # Define the parameter ranges for Grid Search
+    n_neighbors_range = [5, 10, 15, 20, 25]
+    contamination_range = [0.01, 0.02, 0.05]
+
+    #best_params = tenv_utils.manual_lof_optimization(tenvs, cols=['Delta E', 'Delta N', 'Delta V'], n_neighbors_range=n_neighbors_range, contamination_range=contamination_range, search_type='grid')
+
+    #print(f"Best LOF parameters found: {best_params}")
+
     # Outlier points are deleted, series containing huge gaps are eliminated.
     gap_tolerance = 100
     method = 'lof'  # Choose the method to use: 'lof'
-    kwargs = {'n_neighbors': 20, 'contamination': 0.35}  # Additional parameters for the method
+    #kwargs = best_params   # Additional parameters for the method
+    kwargs = {'n_neighbors': 20, 'contamination': 0.35}
     filtered_tenvs, stations_with_gaps, outlier_counts = tenv_utils.apply_filtering(tenvs, gap_tolerance=gap_tolerance,
                                                                                     method=method, **kwargs)
     filtered_tenvs_list = tenv_utils.split_combined_df_to_list(filtered_tenvs)
