@@ -65,7 +65,7 @@ class Preprocessor:
         except Exception as e:
             print(f"An error occurred while reading {file_name}: {e}")
 
-    def load_tenv_file_df(self, tenvs, load_percentage=20):
+    def load_tenv_file_df(self, tenvs, load_percentage=20, point_thr=1000):
         '''Load the given percentage of the .tenv files according to the sorted file list.
 
         Args:
@@ -82,8 +82,9 @@ class Preprocessor:
         if len(loaded_dfs) == 0:
             raise ValueError(
                 "No time series data available for the given stations.")
+        filtered_tenvs = [df for df in loaded_dfs if len(df.index) >= point_thr]
 
-        combined_df = pd.concat(loaded_dfs, ignore_index=True)
+        combined_df = pd.concat(filtered_tenvs, ignore_index=True)
         combined_df['Date'] = tenv_utils.strdate_to_datetime(combined_df['Date'])
         return combined_df
 
@@ -106,7 +107,7 @@ class Preprocessor:
         eqs['Date'] = tenv_utils.strdate_to_datetime(eqs['Date'])
         return eqs
 
-    def load_combined_df(self, gap_tolerance=1000, load_percentage=5, target_magnitude=None, eq_count=None):
+    def load_combined_df(self, gap_tolerance=1000, load_percentage=5, target_magnitude=None, eq_count=None, save=False, method='lof', n_neighbors=20, contamination=0.35):
         '''Load and filter combined dataframe of .tenv files based on specified conditions.
 
         This function extracts .tenv files that have earthquakes, applies various filtering conditions,
@@ -155,6 +156,7 @@ class Preprocessor:
         eq_stats = eqs['Station ID'].unique()
         tenvs_df = self.load_tenv_file_df(
             tenvs=eq_stats, load_percentage=load_percentage)
+        #tenvs_df, _, _ = tenv_utils.apply_filtering(tenvs_df, gap_tolerance=100, method=method, n_neighbors=n_neighbors, contamination=contamination)
 
         
         # append missing earthquake dates to the timeseries data with NaN values for the timeseries columns
@@ -182,5 +184,10 @@ class Preprocessor:
         total_eqs = eqs['Event ID'].nunique()
         loaded_eqs = combined_df['Event ID'].nunique()
         print(f"\033[93mINFO: Loaded {loaded_eqs} of {total_eqs} earthquake events. \033[0m")
-
+        if save:
+            filename = f'loadp{load_percentage}' # @TODO: edit this so that it matches the called method arguments
+            filename = 'combined.csv'
+            filepath = os.path.join(self.parent_path, filename)
+            combined_df.to_csv(filepath, index=False)
+            print(f"\033[93mINFO: Successfully saved the combined dataframe to {filepath}. \033[0m")
         return combined_df
