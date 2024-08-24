@@ -31,8 +31,7 @@ class StationPlotApp(QMainWindow):
 
     def create_plot(self):
         self.fig = Figure(figsize=(10, 9), dpi=100)
-        self.axs = [self.fig.add_subplot(311), self.fig.add_subplot(
-            312), self.fig.add_subplot(313)]
+        self.axs = [self.fig.add_subplot(311), self.fig.add_subplot(312), self.fig.add_subplot(313)]
         self.canvas = FigureCanvas(self.fig)
         self.main_layout.addWidget(self.canvas)
 
@@ -45,21 +44,18 @@ class StationPlotApp(QMainWindow):
         control_layout.addWidget(self.load_percentage_input)
 
         self.magnitude_threshold_input = QLineEdit()
-        self.magnitude_threshold_input.setPlaceholderText(
-            "Enter magnitude threshold")
+        self.magnitude_threshold_input.setPlaceholderText("Enter magnitude threshold")
         control_layout.addWidget(QLabel("Magnitude Threshold"))
         control_layout.addWidget(self.magnitude_threshold_input)
 
         self.earthquake_count_input = QLineEdit()
-        self.earthquake_count_input.setPlaceholderText(
-            "Enter earthquake count")
+        self.earthquake_count_input.setPlaceholderText("Enter earthquake count")
         control_layout.addWidget(QLabel("Earthquake Count"))
         control_layout.addWidget(self.earthquake_count_input)
 
         # Station list
         self.station_list_widget = QListWidget()
-        self.station_list_widget.currentItemChanged.connect(
-            self.on_station_select)
+        self.station_list_widget.currentItemChanged.connect(self.on_station_select)
 
         scroll_area = QScrollArea()
         scroll_area.setWidget(self.station_list_widget)
@@ -78,38 +74,32 @@ class StationPlotApp(QMainWindow):
         self.load_plot_button.clicked.connect(self.load_data)
         control_layout.addWidget(self.load_plot_button)
 
-        self.info_label = QLabel(
-            "Load and filter data to see the details here.")
+        self.info_label = QLabel("Load and filter data to see the details here.")
         control_layout.addWidget(self.info_label)
 
         self.main_layout.addLayout(control_layout)
 
     def load_data(self):
         load_percentage = int(self.load_percentage_input.text() or 5)
-        magnitude_threshold = float(self.magnitude_threshold_input.text(
-        )) if self.magnitude_threshold_input.text() else None
-        earthquake_count = int(self.earthquake_count_input.text(
-        )) if self.earthquake_count_input.text() else None
+        magnitude_threshold = float(self.magnitude_threshold_input.text()) if self.magnitude_threshold_input.text() else None
+        earthquake_count = int(self.earthquake_count_input.text()) if self.earthquake_count_input.text() else None
 
         # Load and filter the data
         self.tenvs = self.pre.load_combined_df(load_percentage=load_percentage,
                                                target_magnitude=magnitude_threshold,
                                                eq_count=earthquake_count, save=True)
 
-        self.filtered_tenvs_list = tenv_utils.split_combined_df_to_list(
-            self.tenvs)
+        self.filtered_tenvs_list = tenv_utils.split_combined_df_to_list(self.tenvs)
         self.index = 0
 
         # Update the station list
         self.station_list_widget.clear()
         for df in self.filtered_tenvs_list:
             station_id = df['Station ID'].iloc[0]
-            num_eqs = df['Event ID'].nunique(
-            ) if 'Event ID' in df.columns else 0
+            num_eqs = df['Event ID'].nunique() if 'Event ID' in df.columns else 0
             self.station_list_widget.addItem(f"{station_id} - {num_eqs} EQs")
 
-        self.info_label.setText(
-            f"Loaded {len(self.filtered_tenvs_list)} stations.")
+        self.info_label.setText(f"Loaded {len(self.filtered_tenvs_list)} stations.")
 
         # Initially clear the plot
         for ax in self.axs:
@@ -125,24 +115,21 @@ class StationPlotApp(QMainWindow):
             ax.clear()
 
         # Plot Delta E
-        self.axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'],
-                            label='Delta E', c='blue', s=10)
+        self.axs[0].scatter(tenv_df['Date'], tenv_df['Delta E'], label='Delta E', c='blue', s=10)
         self.axs[0].set_title(f'{station_name} Delta E', fontsize=10, pad=15)
         self.axs[0].set_ylabel('Delta E')
         self.axs[0].legend()
         self.axs[0].grid(True)
 
         # Plot Delta N
-        self.axs[1].scatter(tenv_df['Date'], tenv_df['Delta N'],
-                            label='Delta N', c='green', s=10)
+        self.axs[1].scatter(tenv_df['Date'], tenv_df['Delta N'], label='Delta N', c='green', s=10)
         self.axs[1].set_title(f'{station_name} Delta N', fontsize=10, pad=15)
         self.axs[1].set_ylabel('Delta N')
         self.axs[1].legend()
         self.axs[1].grid(True)
 
         # Plot Delta V
-        self.axs[2].scatter(tenv_df['Date'], tenv_df['Delta V'],
-                            label='Delta V', c='red', s=10)
+        self.axs[2].scatter(tenv_df['Date'], tenv_df['Delta V'], label='Delta V', c='red', s=10)
         self.axs[2].set_title(f'{station_name} Delta V', fontsize=10, pad=15)
         self.axs[2].set_xlabel('Date')
         self.axs[2].set_ylabel('Delta V')
@@ -152,12 +139,15 @@ class StationPlotApp(QMainWindow):
         # Filter earthquake events for the current station
         station_events = tenv_df[tenv_df['Event Magnitude'].notna()]
 
-        # Plot earthquake events on each axis if they exist
+        # Plot earthquake events on each axis and annotate their magnitudes if they exist
         if not station_events.empty:
             for ax in self.axs:
                 for _, event in station_events.iterrows():
-                    ax.axvline(event['Date'], color='purple',
-                               linestyle='--', label='Earthquake Event')
+                    ax.axvline(event['Date'], color='purple', linestyle='--', label='Earthquake Event')
+                    # Ensure magnitudes don't overlap by slightly adjusting vertical position
+                    text_y_position = ax.get_ylim()[0] + 0.95 * (ax.get_ylim()[1] - ax.get_ylim()[0])
+                    ax.text(event['Date'], text_y_position, f"{event['Event Magnitude']:.1f}",
+                            rotation=90, verticalalignment='center', horizontalalignment='right', color='purple')
 
         self.fig.tight_layout()
         self.canvas.draw()
@@ -167,8 +157,7 @@ class StationPlotApp(QMainWindow):
         for i, df in enumerate(self.filtered_tenvs_list):
             if df['Station ID'].iloc[0] == station_name:
                 self.index = i
-                self.plot_tenv_data(
-                    self.filtered_tenvs_list[self.index], station_name)
+                self.plot_tenv_data(self.filtered_tenvs_list[self.index], station_name)
                 self.station_list_widget.setCurrentRow(self.index)
                 return
         print(f"Station {station_name} not found")
@@ -177,8 +166,7 @@ class StationPlotApp(QMainWindow):
         if current:
             station_name = current.text().split(" - ")[0]
             self.index = self.station_list_widget.currentRow()
-            self.plot_tenv_data(
-                self.filtered_tenvs_list[self.index], station_name)
+            self.plot_tenv_data(self.filtered_tenvs_list[self.index], station_name)
 
 
 if __name__ == '__main__':
