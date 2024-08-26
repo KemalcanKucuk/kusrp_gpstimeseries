@@ -88,10 +88,28 @@ class Preprocessor:
         combined_df['Date'] = tenv_utils.strdate_to_datetime(combined_df['Date'])
         return combined_df
 
+    def load_station_info(self):
+        '''Load the station.txt file with the appropriate columns.
+
+        Args: 
+            None
+
+        Returns:
+            stations (pd.DataFrame): Loaded dataframe from the station file.
+        '''
+        station_file = 'llh.out.txt'  # Adjust this to the correct filename
+        file_path = os.path.join(self.parent_path, station_file)
+
+        cols = ['Station ID', 'Lat', 'Long', 'Hgt']
+        stations = pd.read_csv(file_path, delim_whitespace=True, header=None,
+                            index_col=False, names=cols)
+        
+        return stations
+
     def load_eq_txt(self, target_cols=['Station ID', 'Date', 'Distance from Epicenter', 'Event Magnitude', 'Event ID']):
         '''Load the earthquakes.txt file with appropriate columns.
 
-        Args:
+        Args: 
             target_cols (list, optional): The columns to be loaded from the EQ file. Defaults to ['Station ID', 'Date', 'Distance from Epicenter', 'Event Magnitude'].
 
         Returns:
