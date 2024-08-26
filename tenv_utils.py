@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.model_selection import RandomizedSearchCV
-from skopt import BayesSearchCV
 from sklearn.metrics import make_scorer
 
 def strdate_to_datetime(date_col):
