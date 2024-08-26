@@ -164,9 +164,28 @@ class StationPlotApp(QMainWindow):
         self.map = folium.Map(location=[0, 0], zoom_start=2)
         for index, row in filtered_stations.iterrows():
             station_id = row['Station ID']
+
+            # Get the magnitudes and count of earthquakes for this station
+            station_eqs = self.tenvs[self.tenvs['Station ID'] == station_id]
+            magnitudes = station_eqs['Event Magnitude'].dropna().tolist()  # Filter out NaNs
+            earthquake_count = len(magnitudes)
+
+            # If no magnitudes are available after filtering, skip this marker
+            if earthquake_count == 0:
+                continue
+
+            # Create a popup with magnitudes and earthquake count information
+            popup_content = f"""
+            <b>Station ID:</b> {station_id}<br>
+            <b>Earthquake Count:</b> {earthquake_count}<br>
+            <b>Magnitudes:</b> {', '.join(map(str, magnitudes))}<br>
+            <button onclick='showPlot("{station_id}")'>Show Plot</button>
+            """
+            popup = folium.Popup(popup_content, max_width=300)
+
             marker = folium.Marker(
                 location=[row['Lat'], row['Long']],
-                popup=f"<b>Station ID:</b> {station_id}<br><button onclick='showPlot(\"{station_id}\")'>Show Plot</button>",
+                popup=popup,
                 icon=folium.Icon(color='red', icon='info-sign')
             )
             marker.add_to(self.map)
@@ -184,8 +203,6 @@ class StationPlotApp(QMainWindow):
 
         # Reload the web view with the updated map
         self.web_view.setUrl(QUrl.fromLocalFile(map_path))
-
-
 
     def plot_displacement(self, displacement_data, station_id):
         displacement_df = pd.DataFrame(displacement_data, columns=['Magnitude', 'Delta E', 'Delta N', 'Delta V'])
