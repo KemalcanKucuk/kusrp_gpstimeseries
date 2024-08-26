@@ -5,8 +5,11 @@ gps_timeseries.tenv_utils
 This module provides utility functions that are used to process .tenv files
 """
 from datetime import datetime
+import numpy as np
 import pandas as pd
 from sklearn.neighbors import LocalOutlierFactor
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import make_scorer
 
 def strdate_to_datetime(date_col):
     '''Convert the given date column of a dataframe to datetime format.
@@ -191,3 +194,45 @@ def split_combined_df_to_list(combined_df):
     station_dfs = [group for _, group in combined_df.groupby('Station ID')]
     
     return station_dfs
+
+def custom_lof_scorer(lof_model, X):
+    """
+    Custom scorer for LOF that returns the mean of negative outlier factors.
+    Args:
+        lof_model: An instance of a fitted LOF model.
+        X: Input features.
+    Returns:
+        score: Mean of the negative outlier factors.
+    """
+    return lof_model.negative_outlier_factor_.mean()
+
+def manual_lof_optimization(df, cols, n_neighbors_range, contamination_range, search_type='grid'):
+    """
+    Manually perform optimization for Local Outlier Factor (LOF) parameters.
+    Args:
+        df (pd.DataFrame): The dataframe to be filtered.
+        cols (list): The list of columns to check for outliers.
+        n_neighbors_range (list): List of values to test for `n_neighbors`.
+        contamination_range (list): List of values to test for `contamination`.
+        search_type (str): Type of search, 'grid' or 'random'.
+    Returns:
+        dict: The best parameters found for `n_neighbors` and `contamination`.
+    """
+    X = df[cols].values
+    best_score = -np.inf
+    best_params = {}
+
+    for n_neighbors in n_neighbors_range:
+        for contamination in contamination_range:
+            lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
+            lof.fit(X)
+            score = custom_lof_scorer(lof, X)
+
+            if score > best_score:
+                best_score = score
+                best_params = {'n_neighbors': n_neighbors, 'contamination': contamination}
+
+            print(f"n_neighbors={n_neighbors}, contamination={contamination}, score={score}")
+
+    print(f"Best score: {best_score} with params: {best_params}")
+    return best_params
