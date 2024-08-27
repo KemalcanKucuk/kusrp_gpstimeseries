@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Station Map with Dynamic Data Loading</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        #mapid {
+            flex: 1;
+        }
+        #controls {
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Controls with Load Data and Plot buttons -->
+    <div id="controls">
+        <input type="number" id="load_percentage" value="5" placeholder="Load Percentage (5)">
+        <input type="number" id="magnitude_threshold" placeholder="Magnitude Threshold">
+        <input type="number" id="earthquake_count" placeholder="Earthquake Count">
+        <button onclick="loadStations()">Load Station Data</button>
+    </div>
+
+    <!-- Map -->
+    <div id="mapid"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        var mymap = L.map('mapid').setView([20, 0], 2); // Centered globally
+
+        // Load tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(mymap);
+
+        // Function to load stations dynamically
+        function loadStations() {
+            let loadPercentage = document.getElementById("load_percentage").value || 5;
+            let magnitudeThreshold = document.getElementById("magnitude_threshold").value;
+            let earthquakeCount = document.getElementById("earthquake_count").value;
+
+            console.log("Fetching station data with parameters:", {
+                loadPercentage,
+                magnitudeThreshold,
+                earthquakeCount
+            });
+
+            fetch(`/load_stations?load_percentage=${loadPercentage}&magnitude_threshold=${magnitudeThreshold}&earthquake_count=${earthquakeCount}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Response from /load_stations:", data);
+
+                    if (data.status === "Data Loaded") {
+                        console.log("Station data loaded:", data.stations);
+
+                        // Clear existing markers
+                        mymap.eachLayer(function (layer) {
+                            if (layer instanceof L.Marker) {
+                                mymap.removeLayer(layer);
+                            }
+                        });
+
+                        // Add markers for each station
+                        data.stations.forEach(station => {
+                            console.log("Adding marker for station:", station);
+                            const marker = L.marker([station.lat, station.lon]).addTo(mymap);
+
+                            // Display Station ID, Earthquake Count, and Magnitudes in the popup
+                            marker.bindPopup(`
+                                <b>Station ID: ${station.station_id}</b><br>
+                                Earthquake Count: ${station.eq_count}<br>
+                                Magnitudes: ${station.magnitudes.join(', ') || 'N/A'}<br>
+                                <button onclick="showPlot('${station.station_id}')">Show Plot</button>
+                            `);
+                        });
+                    } else {
+                        console.error("Error loading data:", data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching station data:", error);
+                });
+        }
+
+        // Function to display the plot in a new window
+        function showPlot(stationId) {
+            console.log("Opening /plot.png for station:", stationId);
+            const plotWindow = window.open(`/plot.png?station_id=${stationId}`, "PlotWindow", "width=1200,height=700");
+
+            if (!plotWindow || plotWindow.closed || typeof plotWindow.closed == 'undefined') {
+                alert("Popup blocker is preventing the plot window from opening. Please allow popups.");
+                return;
+            }
+
+            plotWindow.focus();
+        }
+    </script>
+</body>
+</html>
