@@ -3,27 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Station Map with Dynamic Data Loading</title>
+    <title>Station Map with Multi-Station Selection</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body, html {
             height: 100%;
             margin: 0;
             display: flex;
-            flex-direction: column;
-        }
-        #mapid {
-            flex: 1;
+            flex-direction: column; /* Top-down layout with controls above the map */
         }
         #controls {
             padding: 10px;
             background-color: #f9f9f9;
+            display: flex;
+            justify-content: flex-start; /* Align controls to the left */
+            gap: 10px; /* Add space between controls */
+        }
+        #map-container {
+            display: flex;
+            flex-direction: row; /* Place map and sidebar next to each other */
+            height: calc(100vh - 60px); /* Subtract controls height */
+        }
+        #mapid {
+            flex: 4; /* Map takes up most space */
+            height: 100%; /* Full height inside its container */
+        }
+        #sidebar {
+            flex: 1; /* Sidebar takes up less space */
+            padding: 10px;
+            background-color: #f1f1f1;
+            height: 100%; /* Full height inside its container */
+            overflow-y: auto; /* Add scrolling if content overflows */
+        }
+        #selectedStations {
+            list-style: none;
+            padding: 0;
+        }
+        #selectedStations li {
+            padding: 5px;
+            margin: 5px 0;
+            background-color: #ddd;
+        }
+        button {
+            margin: 5px 0;
+            width: 100%;
         }
     </style>
 </head>
 <body>
 
-    <!-- Controls with Load Data and Plot buttons -->
+    <!-- Controls at the top -->
     <div id="controls">
         <input type="number" id="load_percentage" value="5" placeholder="Load Percentage (5)">
         <input type="number" id="magnitude_threshold" placeholder="Magnitude Threshold">
@@ -31,13 +60,24 @@
         <button onclick="loadStations()">Load Station Data</button>
     </div>
 
-    <!-- Map -->
-    <div id="mapid"></div>
+    <!-- Map and Sidebar Container -->
+    <div id="map-container">
+        <!-- Map -->
+        <div id="mapid"></div>
+
+        <!-- Sidebar for Selected Stations -->
+        <div id="sidebar">
+            <h3>Selected Stations</h3>
+            <ul id="selectedStations"></ul>
+            <button onclick="clearSelection()">Clear Selection</button>
+            <button onclick="plotAveragedDisplacement()">Plot Averaged Displacement</button>
+        </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        // Initialize the map
         var mymap = L.map('mapid').setView([20, 0], 2); // Centered globally
+        var selectedStations = [];
 
         // Load tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -50,17 +90,9 @@
             let magnitudeThreshold = document.getElementById("magnitude_threshold").value;
             let earthquakeCount = document.getElementById("earthquake_count").value;
 
-            console.log("Fetching station data with parameters:", {
-                loadPercentage,
-                magnitudeThreshold,
-                earthquakeCount
-            });
-
             fetch(`/load_stations?load_percentage=${loadPercentage}&magnitude_threshold=${magnitudeThreshold}&earthquake_count=${earthquakeCount}`)
                 .then(response => response.json())
                 .then(data => {
-                    console.log("Response from /load_stations:", data);
-
                     if (data.status === "Data Loaded") {
                         console.log("Station data loaded:", data.stations);
 
@@ -73,34 +105,70 @@
 
                         // Add markers for each station
                         data.stations.forEach(station => {
-                            console.log("Adding marker for station:", station);
                             const marker = L.marker([station.lat, station.lon]).addTo(mymap);
 
-                            // Display Station ID, Earthquake Count, and Magnitudes in the popup
+                            // Create pop-up with checkbox for station selection
                             marker.bindPopup(`
                                 <b>Station ID: ${station.station_id}</b><br>
                                 Earthquake Count: ${station.eq_count}<br>
                                 Magnitudes: ${station.magnitudes.join(', ') || 'N/A'}<br>
-                                <button onclick="showPlot('${station.station_id}')">Show Plot</button>
+                                <input type="checkbox" onclick="toggleStationSelection('${station.station_id}', ${station.lat}, ${station.lon})"> Select Station
                             `);
                         });
                     } else {
                         console.error("Error loading data:", data.message);
                     }
                 })
-                .catch(error => {
-                    console.error("Error fetching station data:", error);
-                });
+                .catch(error => console.error("Error loading station data:", error));
         }
 
-        // Function to display the plot in a new window
-        function showPlot(stationId) {
-            console.log("Opening /plot.png for station:", stationId);
-            const plotWindow = window.open(`/plot.png?station_id=${stationId}`, "PlotWindow", "width=1200,height=700");
+        // Function to toggle station selection
+        function toggleStationSelection(stationId, lat, lon) {
+            const existingIndex = selectedStations.findIndex(station => station.station_id === stationId);
+
+            if (existingIndex === -1) {
+                // Add station to selection
+                selectedStations.push({ station_id: stationId, lat, lon });
+            } else {
+                // Remove station from selection
+                selectedStations.splice(existingIndex, 1);
+            }
+
+            updateSelectedStationsList();
+        }
+
+        // Function to update the selected stations list in the sidebar
+        function updateSelectedStationsList() {
+            const selectedStationsList = document.getElementById("selectedStations");
+            selectedStationsList.innerHTML = ""; // Clear current list
+
+            selectedStations.forEach(station => {
+                const li = document.createElement("li");
+                li.textContent = station.station_id;
+                selectedStationsList.appendChild(li);
+            });
+        }
+
+        // Function to clear the selection
+        function clearSelection() {
+            selectedStations = [];
+            updateSelectedStationsList();
+        }
+
+        // Function to plot the averaged displacement for selected stations
+        function plotAveragedDisplacement() {
+            if (selectedStations.length === 0) {
+                alert("Please select at least one station.");
+                return;
+            }
+
+            const stationIds = selectedStations.map(station => station.station_id);
+
+            // Send request to backend to generate averaged displacement plot
+            const plotWindow = window.open(`/plot_averaged_displacement?station_ids=${stationIds.join(',')}`, "PlotWindow", "width=1200,height=700");
 
             if (!plotWindow || plotWindow.closed || typeof plotWindow.closed == 'undefined') {
                 alert("Popup blocker is preventing the plot window from opening. Please allow popups.");
-                return;
             }
 
             plotWindow.focus();

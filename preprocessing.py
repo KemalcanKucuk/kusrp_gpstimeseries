@@ -204,6 +204,7 @@ class Preprocessor:
         print(f"\033[93mINFO: Loaded {loaded_eqs} of {total_eqs} earthquake events. \033[0m")
         if save:
             filename = f'loadp{load_percentage}' # @TODO: edit this so that it matches the called method arguments
+            # @TODO: gropby event id
             filename = 'combined.csv'
             filepath = os.path.join(self.parent_path, filename)
             combined_df.to_csv(filepath, index=False)
