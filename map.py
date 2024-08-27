@@ -189,5 +189,94 @@ def plot_png():
         print(f"Error generating plot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
+@app.route('/plot_averaged_displacement')
+def plot_averaged_displacement():
+    try:
+        # Retrieve the station IDs from the request
+        station_ids = request.args.get('station_ids')
+        if not station_ids:
+            raise ValueError("No station IDs provided")
+
+        # Split the station IDs into a list
+        station_ids = station_ids.split(',')
+
+        # Load the combined data
+        combined_df = pd.read_csv(os.path.join(parent_path, 'combined.csv'))
+        
+        # Initialize a list to store displacement data across all stations
+        all_displacement_data = []
+
+        # Loop through each station and calculate the displacement for each event
+        for station_id in station_ids:
+            station_data = combined_df[combined_df['Station ID'] == station_id]
+            
+            # Collect displacements for this station
+            displacement_data = []
+
+            for event_id in station_data['Event ID'].dropna().unique():
+                event_data = station_data[station_data['Event ID'] == event_id]
+
+                event_magnitude = event_data['Event Magnitude'].iloc[0]
+                event_date = event_data['Date'].values[0]
+
+                # Find closest non-NaN data before and after the event
+                before_event_data = station_data[(station_data['Date'] < event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
+                after_event_data = station_data[(station_data['Date'] > event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
+
+                if before_event_data.empty or after_event_data.empty:
+                    continue
+
+                day_before = before_event_data.iloc[-1]
+                day_after = after_event_data.iloc[0]
+
+                delta_e_displacement = abs(day_after['Delta E'] - day_before['Delta E'])
+                delta_n_displacement = abs(day_after['Delta N'] - day_before['Delta N'])
+                delta_v_displacement = abs(day_after['Delta V'] - day_before['Delta V'])
+
+                displacement_data.append([event_magnitude, delta_e_displacement, delta_n_displacement, delta_v_displacement])
+
+            # Append to the list of all stations' displacement data
+            all_displacement_data.extend(displacement_data)
+
+        # Convert the combined displacement data into a DataFrame
+        displacement_df = pd.DataFrame(all_displacement_data, columns=['Magnitude', 'Delta E', 'Delta N', 'Delta V'])
+
+        # Check if any data remains after filtering
+        if displacement_df.empty:
+            print("No valid displacement data available after filtering.")
+            return jsonify({"status": "error", "message": "No valid displacement data available for the selected stations"}), 400
+
+        # Group by Magnitude and calculate the mean displacement across all stations
+        displacement_grouped = displacement_df.groupby('Magnitude').mean().reset_index()
+
+        # Plotting the averaged displacement bar graph for each magnitude
+        fig = Figure(figsize=(12, 6))
+        axis = fig.add_subplot(1, 1, 1)
+
+        bar_width = 0.2
+        index = np.arange(len(displacement_grouped))
+
+        # Plot bars for averaged Delta E, Delta N, and Delta V
+        axis.bar(index, displacement_grouped['Delta E'], bar_width, label='Averaged Delta E')
+        axis.bar(index + bar_width, displacement_grouped['Delta N'], bar_width, label='Averaged Delta N')
+        axis.bar(index + 2 * bar_width, displacement_grouped['Delta V'], bar_width, label='Averaged Delta V')
+
+        axis.set_xlabel('Magnitude')
+        axis.set_ylabel('Averaged Displacement')
+        axis.set_title(f'Averaged Displacement by Magnitude for Selected Stations')
+        axis.set_xticks(index + bar_width)
+        axis.set_xticklabels(displacement_grouped['Magnitude'].round(2))
+        axis.legend()
+
+        # Create an output stream and save the plot to it
+        output = io.BytesIO()
+        FigureCanvas(fig).print_png(output)
+
+        return Response(output.getvalue(), mimetype='image/png')
+
+    except Exception as e:
+        print(f"Error generating averaged displacement plot: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
 if __name__ == '__main__':
     app.run(debug=True)
