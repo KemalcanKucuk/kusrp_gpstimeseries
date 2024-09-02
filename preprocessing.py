@@ -197,7 +197,7 @@ class Preprocessor:
 
         combined_tenvs_df = pd.concat(all_stations_dfs)
         # combined_df, _, _ = tenv_utils.apply_filtering(tenvs_df, gap_tolerance=gap_tolerance)
-        combined_df = pd.merge(combined_tenvs_df, eqs[['Station ID', 'Date', 'Event ID', 'Event Magnitude']], on=['Station ID', 'Date'], how='left')
+        combined_df = pd.merge(combined_tenvs_df, eqs[['Station ID', 'Date', 'Event ID', 'Event Magnitude', 'Distance from Epicenter']], on=['Station ID', 'Date'], how='left')
         # sanity check
         total_eqs = eqs['Event ID'].nunique()
         loaded_eqs = combined_df['Event ID'].nunique()
