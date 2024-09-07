@@ -3,37 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Station Map with Multi-Station Selection</title>
+    <title>Station Map with Earthquake Selection</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body, html {
             height: 100%;
             margin: 0;
             display: flex;
-            flex-direction: column; /* Top-down layout with controls above the map */
+            flex-direction: column;
         }
         #controls {
             padding: 10px;
             background-color: #f9f9f9;
             display: flex;
-            justify-content: flex-start; /* Align controls to the left */
-            gap: 10px; /* Add space between controls */
+            justify-content: flex-start;
+            gap: 10px;
         }
         #map-container {
             display: flex;
-            flex-direction: row; /* Place map and sidebar next to each other */
-            height: calc(100vh - 60px); /* Subtract controls height */
+            height: calc(100vh - 60px);
         }
         #mapid {
-            flex: 4; /* Map takes up most space */
-            height: 100%; /* Full height inside its container */
+            flex: 3;
+            height: 100%;
         }
         #sidebar {
-            flex: 1; /* Sidebar takes up less space */
+            flex: 1;
             padding: 10px;
             background-color: #f1f1f1;
-            height: 100%; /* Full height inside its container */
-            overflow-y: auto; /* Add scrolling if content overflows */
+            height: 100%;
+            overflow-y: auto;
+        }
+        .earthquake-item {
+            cursor: pointer;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #ddd;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .earthquake-item.selected {
+            background-color: #aaa;
         }
         #selectedStations {
             list-style: none;
@@ -65,26 +75,92 @@
         <!-- Map -->
         <div id="mapid"></div>
 
-        <!-- Sidebar for Selected Stations -->
+        <!-- Sidebar -->
         <div id="sidebar">
+            <h3>Mode Selection</h3>
+            <div>
+                <input type="radio" id="mode_selected" name="mode" value="selected">
+                <label for="mode_selected">Plot for Selected Stations of Earthquake</label><br>
+                <input type="radio" id="mode_all" name="mode" value="all" checked>
+                <label for="mode_all">Plot for All Stations of Earthquake</label>
+            </div>
+
             <h3>Selected Stations</h3>
             <ul id="selectedStations"></ul>
             <button onclick="clearSelection()">Clear Selection</button>
-            <button onclick="plotAveragedDisplacement()">Plot Averaged Displacement</button>
+            <button onclick="plotBasedOnMode()">Plot</button>
+
+            <!-- Earthquake Listing -->
+            <h3>Earthquakes</h3>
+            <ul id="earthquake-items">
+                <!-- Earthquake items will be populated here from the server -->
+                {% for earthquake in earthquakes %}
+                    <li class="earthquake-item" data-event-id="{{ earthquake['Event ID'] }}">
+                        Earthquake ID: {{ earthquake['Event ID'] }}, Magnitude: {{ earthquake['Event Magnitude'] }}
+                    </li>
+                {% endfor %}
+            </ul>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
-        var mymap = L.map('mapid').setView([20, 0], 2); // Centered globally
-        var selectedStations = [];
+        let mymap = L.map('mapid').setView([20, 0], 2); // Centered globally
+        let selectedStations = [];
+        let selectedEarthquakeId = null; // Track the selected earthquake ID
 
         // Load tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19
         }).addTo(mymap);
 
-        // Function to load stations dynamically
+        // Add event listeners to earthquake items to select an earthquake
+        document.querySelectorAll('.earthquake-item').forEach(item => {
+            item.addEventListener('click', function() {
+                // Remove selected class from other items
+                document.querySelectorAll('.earthquake-item').forEach(i => i.classList.remove('selected'));
+
+                // Add selected class to the clicked item
+                this.classList.add('selected');
+                selectedEarthquakeId = this.getAttribute('data-event-id'); // Store the selected earthquake ID
+
+                // Load stations for this earthquake
+                loadStationsForEarthquake(selectedEarthquakeId);
+            });
+        });
+
+        // Load stations for the selected earthquake
+        function loadStationsForEarthquake(event_id) {
+            fetch(`/stations_for_earthquake?event_id=${event_id}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    console.log("Affected stations:", data.stations);
+
+                    // Clear existing markers
+                    mymap.eachLayer(function (layer) {
+                        if (layer instanceof L.Marker) {
+                            mymap.removeLayer(layer);
+                        }
+                    });
+
+                    // Add markers for affected stations
+                    data.stations.forEach(station => {
+                        const marker = L.marker([station.lat, station.lon]).addTo(mymap);
+                        marker.bindPopup(`
+                            <b>Station ID: ${station.station_id}</b><br>
+                            Latitude: ${station.lat}<br>
+                            Longitude: ${station.lon}
+                        `);
+                    });
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => console.error("Error loading stations for earthquake:", error));
+        }
+
+        // Load all stations dynamically based on input
         function loadStations() {
             let loadPercentage = document.getElementById("load_percentage").value || 5;
             let magnitudeThreshold = document.getElementById("magnitude_threshold").value;
@@ -122,7 +198,7 @@
                 .catch(error => console.error("Error loading station data:", error));
         }
 
-        // Function to toggle station selection
+        // Toggle station selection
         function toggleStationSelection(stationId, lat, lon) {
             const existingIndex = selectedStations.findIndex(station => station.station_id === stationId);
 
@@ -137,7 +213,7 @@
             updateSelectedStationsList();
         }
 
-        // Function to update the selected stations list in the sidebar
+        // Update the selected stations list in the sidebar
         function updateSelectedStationsList() {
             const selectedStationsList = document.getElementById("selectedStations");
             selectedStationsList.innerHTML = ""; // Clear current list
@@ -149,14 +225,30 @@
             });
         }
 
-        // Function to clear the selection
+        // Clear the station selection
         function clearSelection() {
             selectedStations = [];
             updateSelectedStationsList();
         }
 
-        // Function to plot the averaged displacement for selected stations
-        function plotAveragedDisplacement() {
+        // Plot based on the selected mode
+        function plotBasedOnMode() {
+            if (!selectedEarthquakeId) {
+                alert("Please select an earthquake.");
+                return;
+            }
+
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+
+            if (mode === "selected") {
+                plotAveragedDisplacementForSelectedStations();
+            } else if (mode === "all") {
+                plotDistanceVsDisplacement(selectedEarthquakeId);
+            }
+        }
+
+        // Plot the averaged displacement for selected stations
+        function plotAveragedDisplacementForSelectedStations() {
             if (selectedStations.length === 0) {
                 alert("Please select at least one station.");
                 return;
@@ -173,6 +265,19 @@
 
             plotWindow.focus();
         }
+
+        // Plot the distance vs displacement for all stations of the selected earthquake
+        function plotDistanceVsDisplacement(eventId) {
+            // Send request to backend to generate the plot
+            const plotWindow = window.open(`/plot_distance_vs_displacement?event_id=${eventId}`, "PlotWindow", "width=1200,height=700");
+
+            if (!plotWindow || plotWindow.closed || typeof plotWindow.closed == 'undefined') {
+                alert("Popup blocker is preventing the plot window from opening. Please allow popups.");
+            }
+
+            plotWindow.focus();
+        }
+
     </script>
 </body>
 </html>

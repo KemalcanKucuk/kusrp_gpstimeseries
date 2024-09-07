@@ -4,7 +4,7 @@ import socket
 from flask import Flask, jsonify, Response, request, render_template
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import preprocessing as pr
 import constants
 import pandas as pd
@@ -19,10 +19,30 @@ pre = pr.Preprocessor(parent_path)
 
 app = Flask(__name__)
 
+
+# Index Route
 @app.route('/')
 def index():
-    return render_template('index.html')
+    try:
+        # Load the combined data
+        combined_df = pd.read_csv(os.path.join(parent_path, 'all_earthquakes.csv'))
 
+        # Drop rows where Event ID or Event Magnitude is NaN
+        combined_df = combined_df.dropna(subset=['Event ID', 'Event Magnitude'])
+
+        # Extract unique earthquake events
+        earthquake_df = combined_df[['Event ID', 'Event Magnitude']].drop_duplicates()
+
+        earthquakes = earthquake_df.to_dict(orient='records')
+
+        # Render the index page and pass the earthquake data
+        return render_template('index.html', earthquakes=earthquakes)
+    except Exception as e:
+        print(f"Error loading earthquake data: {e}")
+        return jsonify({"status": "error", "message": "Error loading earthquake data"}), 500
+
+
+# Load Stations Route
 @app.route('/load_stations')
 def load_stations():
     try:
@@ -33,14 +53,15 @@ def load_stations():
         magnitude_threshold = float(magnitude_threshold) if magnitude_threshold else None
         earthquake_count = int(earthquake_count) if earthquake_count else None
 
-        print(f"Loading stations with load_percentage={load_percentage}, magnitude_threshold={magnitude_threshold}, earthquake_count={earthquake_count}")
+        print(
+            f"Loading stations with load_percentage={load_percentage}, magnitude_threshold={magnitude_threshold}, earthquake_count={earthquake_count}")
 
         # Load the filtered combined earthquake data
         combined_df = pre.load_combined_df(load_percentage=load_percentage,
                                            target_magnitude=magnitude_threshold,
                                            eq_count=earthquake_count,
                                            save=True)
-        
+
         # Debugging: Print first few rows of combined_df
         print(f"Combined DataFrame (first 5 rows):\n{combined_df.head()}")
         print(f"Combined DataFrame contains {len(combined_df)} rows")
@@ -94,80 +115,60 @@ def load_stations():
         print(f"Error loading stations: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
+
+# Old Plotting Logic (Unchanged)
 @app.route('/plot.png')
 def plot_png():
     try:
-        # Retrieve the station ID from the request
         station_id = request.args.get('station_id')
         if not station_id:
             raise ValueError("Station ID is missing")
 
         # Load the combined data
         combined_df = pd.read_csv(os.path.join(parent_path, 'combined.csv'))
-        
-        # Filter the data for the given station
         station_data = combined_df[combined_df['Station ID'] == station_id]
 
-        # Initialize a list to store displacement data
         displacement_data = []
 
-        # Loop through each unique event ID to calculate displacements
         for event_id in station_data['Event ID'].dropna().unique():
             event_data = station_data[station_data['Event ID'] == event_id]
-
-            # Get the magnitude from the day of the event
             event_magnitude = event_data['Event Magnitude'].iloc[0]
-
-            # Ensure that the event date exists
             event_date = event_data['Date'].values[0]
 
-            # Find the closest non-NaN value before the earthquake
-            before_event_data = station_data[(station_data['Date'] < event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
-            if before_event_data.empty:
-                print(f"No non-NaN data found before the event for {event_id}")
-                continue
-            day_before = before_event_data.iloc[-1]  # Take the closest before
+            before_event_data = station_data[
+                (station_data['Date'] < event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(
+                    axis=1)]
+            after_event_data = station_data[
+                (station_data['Date'] > event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(
+                    axis=1)]
 
-            # Find the closest non-NaN value after the earthquake
-            after_event_data = station_data[(station_data['Date'] > event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
-            if after_event_data.empty:
-                print(f"No non-NaN data found after the event for {event_id}")
+            if before_event_data.empty or after_event_data.empty:
                 continue
-            day_after = after_event_data.iloc[0]  # Take the closest after
 
-            # Calculate the displacement for each delta component
+            day_before = before_event_data.iloc[-1]
+            day_after = after_event_data.iloc[0]
+
             delta_e_displacement = abs(day_after['Delta E'] - day_before['Delta E'])
             delta_n_displacement = abs(day_after['Delta N'] - day_before['Delta N'])
             delta_v_displacement = abs(day_after['Delta V'] - day_before['Delta V'])
 
-            # Debugging: Print out the displacement for this event
-            print(f"Event {event_id}: Magnitude = {event_magnitude}, Delta E = {delta_e_displacement}, Delta N = {delta_n_displacement}, Delta V = {delta_v_displacement}")
+            displacement_data.append(
+                [event_magnitude, delta_e_displacement, delta_n_displacement, delta_v_displacement])
 
-            # Append displacement data along with the event magnitude
-            displacement_data.append([event_magnitude, delta_e_displacement, delta_n_displacement, delta_v_displacement])
-
-        # Convert the displacement data into a DataFrame
         displacement_df = pd.DataFrame(displacement_data, columns=['Magnitude', 'Delta E', 'Delta N', 'Delta V'])
 
-        # Debugging: Print the displacement data
-        print(f"Displacement DataFrame:\n{displacement_df}")
-
-        # Check if any data remains after filtering
         if displacement_df.empty:
             print("No valid displacement data available after filtering.")
             return jsonify({"status": "error", "message": "No valid displacement data available for this station"}), 400
 
-        # Group by Magnitude and calculate mean displacement for each component
         displacement_grouped = displacement_df.groupby('Magnitude').mean().reset_index()
 
-        # Plotting the displacement bar graph for each magnitude
         fig = Figure(figsize=(12, 6))
         axis = fig.add_subplot(1, 1, 1)
 
         bar_width = 0.2
         index = np.arange(len(displacement_grouped))
 
-        # Plot bars for Delta E, Delta N, and Delta V
         axis.bar(index, displacement_grouped['Delta E'], bar_width, label='Delta E')
         axis.bar(index + bar_width, displacement_grouped['Delta N'], bar_width, label='Delta N')
         axis.bar(index + 2 * bar_width, displacement_grouped['Delta V'], bar_width, label='Delta V')
@@ -179,7 +180,6 @@ def plot_png():
         axis.set_xticklabels(displacement_grouped['Magnitude'].round(2))
         axis.legend()
 
-        # Create an output stream and save the plot to it
         output = io.BytesIO()
         FigureCanvas(fig).print_png(output)
 
@@ -189,39 +189,60 @@ def plot_png():
         print(f"Error generating plot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
-@app.route('/plot_averaged_displacement')
-def plot_averaged_displacement():
+
+# New Plotting Logic: Distance vs Displacement for Earthquake
+@app.route('/plot_distance_vs_displacement')
+def plot_distance_vs_displacement():
     try:
-        # Retrieve the station IDs from the request
-        station_ids = request.args.get('station_ids')
-        if not station_ids:
-            raise ValueError("No station IDs provided")
+        # Retrieve the event ID from the request
+        event_id = request.args.get('event_id')
+        if not event_id:
+            raise ValueError("Event ID is missing")
 
-        # Split the station IDs into a list
-        station_ids = station_ids.split(',')
+        # Load the combined earthquake data
+        combined_df = pd.read_csv(os.path.join(parent_path, 'all_earthquakes.csv'))
 
-        # Load the combined data
-        combined_df = pd.read_csv(os.path.join(parent_path, 'combined.csv'))
-        
-        # Initialize a list to store displacement data across all stations
-        all_displacement_data = []
+        # Load earthquake information from the earthquakes.txt file
+        earthquake_info = pre.load_eq_txt()
 
-        # Loop through each station and calculate the displacement for each event
-        for station_id in station_ids:
-            station_data = combined_df[combined_df['Station ID'] == station_id]
-            
-            # Collect displacements for this station
-            displacement_data = []
+        # Filter the combined data for the selected event
+        event_data = combined_df[combined_df['Event ID'] == event_id]
+        if event_data.empty:
+            print(f"No event data found for Event ID: {event_id}")
+            return jsonify({"status": "error", "message": "No data found for the given earthquake event"}), 400
 
-            for event_id in station_data['Event ID'].dropna().unique():
-                event_data = station_data[station_data['Event ID'] == event_id]
+        # Get distances for all stations from earthquakes.txt
+        event_distances = earthquake_info[earthquake_info['Event ID'] == event_id]
+
+        if event_distances.empty:
+            print(f"No distances found for Event ID: {event_id}")
+            return jsonify({"status": "error", "message": "No distances found for the given earthquake event"}), 400
+
+        # Merge combined_df with event_distances to get the Distance from Epicenter
+        merged_df = pd.merge(event_data, event_distances[['Station ID', 'Distance from Epicenter']], on='Station ID')
+
+        # Initialize lists to store displacements and distances
+        displacement_data = []
+        for station_id, station_df in merged_df.groupby('Station ID'):
+            # Log for debugging each station
+            print(f"Processing Station ID: {station_id}")
+
+            # Get displacement for each event
+            for event_id in station_df['Event ID'].dropna().unique():
+                event_data = station_df[station_df['Event ID'] == event_id]
 
                 event_magnitude = event_data['Event Magnitude'].iloc[0]
                 event_date = event_data['Date'].values[0]
 
                 # Find closest non-NaN data before and after the event
-                before_event_data = station_data[(station_data['Date'] < event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
-                after_event_data = station_data[(station_data['Date'] > event_date) & station_data[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
+                before_event_data = station_df[(station_df['Date'] < event_date) & station_df[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
+                after_event_data = station_df[(station_df['Date'] > event_date) & station_df[['Delta E', 'Delta N', 'Delta V']].notna().all(axis=1)]
+
+                # Log for missing data before or after
+                if before_event_data.empty:
+                    print(f"No valid data found before the event for Station ID: {station_id}, Event ID: {event_id}")
+                if after_event_data.empty:
+                    print(f"No valid data found after the event for Station ID: {station_id}, Event ID: {event_id}")
 
                 if before_event_data.empty or after_event_data.empty:
                     continue
@@ -233,39 +254,31 @@ def plot_averaged_displacement():
                 delta_n_displacement = abs(day_after['Delta N'] - day_before['Delta N'])
                 delta_v_displacement = abs(day_after['Delta V'] - day_before['Delta V'])
 
-                displacement_data.append([event_magnitude, delta_e_displacement, delta_n_displacement, delta_v_displacement])
+                displacement_data.append([station_id, event_data['Distance from Epicenter'].iloc[0],
+                                          delta_e_displacement, delta_n_displacement, delta_v_displacement])
 
-            # Append to the list of all stations' displacement data
-            all_displacement_data.extend(displacement_data)
-
-        # Convert the combined displacement data into a DataFrame
-        displacement_df = pd.DataFrame(all_displacement_data, columns=['Magnitude', 'Delta E', 'Delta N', 'Delta V'])
+        # Convert the displacement data into a DataFrame
+        displacement_df = pd.DataFrame(displacement_data, columns=['Station ID', 'Distance from Epicenter', 'Delta E', 'Delta N', 'Delta V'])
 
         # Check if any data remains after filtering
         if displacement_df.empty:
-            print("No valid displacement data available after filtering.")
-            return jsonify({"status": "error", "message": "No valid displacement data available for the selected stations"}), 400
+            print(f"No valid displacement data available for Event ID: {event_id}")
+            return jsonify({"status": "error", "message": "No valid displacement data available for this earthquake"}), 400
 
-        # Group by Magnitude and calculate the mean displacement across all stations
-        displacement_grouped = displacement_df.groupby('Magnitude').mean().reset_index()
+        # Calculate mean displacements for plotting
+        displacement_grouped = displacement_df.groupby('Distance from Epicenter').mean().reset_index()
 
-        # Plotting the averaged displacement bar graph for each magnitude
+        # Plotting the displacement vs distance from epicenter
         fig = Figure(figsize=(12, 6))
         axis = fig.add_subplot(1, 1, 1)
 
-        bar_width = 0.2
-        index = np.arange(len(displacement_grouped))
+        axis.plot(displacement_grouped['Distance from Epicenter'], displacement_grouped['Delta E'], label='Delta E')
+        axis.plot(displacement_grouped['Distance from Epicenter'], displacement_grouped['Delta N'], label='Delta N')
+        axis.plot(displacement_grouped['Distance from Epicenter'], displacement_grouped['Delta V'], label='Delta V')
 
-        # Plot bars for averaged Delta E, Delta N, and Delta V
-        axis.bar(index, displacement_grouped['Delta E'], bar_width, label='Averaged Delta E')
-        axis.bar(index + bar_width, displacement_grouped['Delta N'], bar_width, label='Averaged Delta N')
-        axis.bar(index + 2 * bar_width, displacement_grouped['Delta V'], bar_width, label='Averaged Delta V')
-
-        axis.set_xlabel('Magnitude')
-        axis.set_ylabel('Averaged Displacement')
-        axis.set_title(f'Averaged Displacement by Magnitude for Selected Stations')
-        axis.set_xticks(index + bar_width)
-        axis.set_xticklabels(displacement_grouped['Magnitude'].round(2))
+        axis.set_xlabel('Distance from Epicenter (km)')
+        axis.set_ylabel('Displacement (m)')
+        axis.set_title(f'Displacement vs Distance from Epicenter for Earthquake {event_id}')
         axis.legend()
 
         # Create an output stream and save the plot to it
@@ -275,8 +288,61 @@ def plot_averaged_displacement():
         return Response(output.getvalue(), mimetype='image/png')
 
     except Exception as e:
-        print(f"Error generating averaged displacement plot: {e}")
+        print(f"Error generating distance vs displacement plot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
+
+
+
+
+# Stations for Earthquake Route
+@app.route('/stations_for_earthquake')
+def stations_for_earthquake():
+    try:
+        event_id = request.args.get('event_id')
+        if not event_id:
+            raise ValueError("Event ID is missing")
+
+        combined_df = pd.read_csv(os.path.join(parent_path, 'all_earthquakes.csv'))
+        event_data = combined_df[combined_df['Event ID'] == event_id]
+
+        if event_data.empty:
+            return jsonify({"status": "error", "message": "No stations found for the given earthquake event"}), 400
+
+        station_df = pre.load_station_info()
+        affected_stations = station_df[station_df['Station ID'].isin(event_data['Station ID'].unique())]
+
+        if affected_stations.empty:
+            return jsonify({"status": "error", "message": "No stations found with earthquake data"}), 400
+
+        stations = []
+        for _, row in affected_stations.iterrows():
+            stations.append({
+                'station_id': row['Station ID'],
+                'lat': row['Lat'],
+                'lon': row['Long']
+            })
+
+        return jsonify({"status": "success", "stations": stations})
+
+    except Exception as e:
+        print(f"Error loading stations for earthquake: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+# Earthquake List Route
+@app.route('/earthquake_list')
+def earthquake_list():
+    try:
+        combined_df = pd.read_csv(os.path.join(parent_path, 'all_earthquakes.csv'))
+        combined_df = combined_df.dropna(subset=['Event ID', 'Event Magnitude'])
+        earthquake_df = combined_df[['Event ID', 'Event Magnitude']].drop_duplicates()
+        earthquakes = earthquake_df.to_dict(orient='records')
+        return jsonify({"status": "success", "earthquakes": earthquakes})
+
+    except Exception as e:
+        print(f"Error loading earthquake list: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True)
