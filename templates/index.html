@@ -35,15 +35,14 @@
             overflow-y: auto;
         }
         .earthquake-item {
-            cursor: pointer;
             padding: 10px;
             margin-bottom: 10px;
             background-color: #ddd;
             border-radius: 5px;
             border: 1px solid #ccc;
-        }
-        .earthquake-item.selected {
-            background-color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         #selectedStations {
             list-style: none;
@@ -90,13 +89,16 @@
             <button onclick="clearSelection()">Clear Selection</button>
             <button onclick="plotBasedOnMode()">Plot</button>
 
-            <!-- Earthquake Listing -->
-            <h3>Earthquakes</h3>
+            <!-- Earthquake Listing with Checkboxes -->
+            <h3>Select Earthquakes</h3>
             <ul id="earthquake-items">
                 <!-- Earthquake items will be populated here from the server -->
                 {% for earthquake in earthquakes %}
-                    <li class="earthquake-item" data-event-id="{{ earthquake['Event ID'] }}">
-                        Earthquake ID: {{ earthquake['Event ID'] }}, Magnitude: {{ earthquake['Event Magnitude'] }}
+                    <li class="earthquake-item">
+                        <label>
+                            <input type="checkbox" class="earthquake-checkbox" value="{{ earthquake['Event ID'] }}">
+                            Earthquake ID: {{ earthquake['Event ID'] }}, Magnitude: {{ earthquake['Event Magnitude'] }}
+                        </label>
                     </li>
                 {% endfor %}
             </ul>
@@ -114,23 +116,22 @@
             maxZoom: 19
         }).addTo(mymap);
 
-        // Add event listeners to earthquake items to toggle selection
-        document.querySelectorAll('.earthquake-item').forEach(item => {
-            item.addEventListener('click', function() {
-                const eventId = this.getAttribute('data-event-id');
+        // Add event listeners to earthquake checkboxes to track selection
+        document.querySelectorAll('.earthquake-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const eventId = this.value;
 
-                // Toggle the selection
-                if (this.classList.contains('selected')) {
-                    this.classList.remove('selected');
-                    selectedEarthquakeIds = selectedEarthquakeIds.filter(id => id !== eventId);
-                } else {
-                    this.classList.add('selected');
+                if (this.checked) {
+                    // Add the earthquake ID to the selected list
                     selectedEarthquakeIds.push(eventId);
+                } else {
+                    // Remove the earthquake ID from the selected list
+                    selectedEarthquakeIds = selectedEarthquakeIds.filter(id => id !== eventId);
                 }
 
                 console.log("Selected Earthquake IDs:", selectedEarthquakeIds);
 
-                // Optionally, load stations for the selected earthquake (optional for plot function)
+                // Optionally, load stations for the selected earthquakes (if needed for display)
                 loadStationsForEarthquakes(selectedEarthquakeIds);
             });
         });
