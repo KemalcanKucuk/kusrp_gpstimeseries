@@ -107,31 +107,38 @@
     <script>
         let mymap = L.map('mapid').setView([20, 0], 2); // Centered globally
         let selectedStations = [];
-        let selectedEarthquakeId = null; // Track the selected earthquake ID
+        let selectedEarthquakeIds = []; // Track multiple selected earthquake IDs
 
         // Load tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19
         }).addTo(mymap);
 
-        // Add event listeners to earthquake items to select an earthquake
+        // Add event listeners to earthquake items to toggle selection
         document.querySelectorAll('.earthquake-item').forEach(item => {
             item.addEventListener('click', function() {
-                // Remove selected class from other items
-                document.querySelectorAll('.earthquake-item').forEach(i => i.classList.remove('selected'));
+                const eventId = this.getAttribute('data-event-id');
 
-                // Add selected class to the clicked item
-                this.classList.add('selected');
-                selectedEarthquakeId = this.getAttribute('data-event-id'); // Store the selected earthquake ID
+                // Toggle the selection
+                if (this.classList.contains('selected')) {
+                    this.classList.remove('selected');
+                    selectedEarthquakeIds = selectedEarthquakeIds.filter(id => id !== eventId);
+                } else {
+                    this.classList.add('selected');
+                    selectedEarthquakeIds.push(eventId);
+                }
 
-                // Load stations for this earthquake
-                loadStationsForEarthquake(selectedEarthquakeId);
+                console.log("Selected Earthquake IDs:", selectedEarthquakeIds);
+
+                // Optionally, load stations for the selected earthquake (optional for plot function)
+                loadStationsForEarthquakes(selectedEarthquakeIds);
             });
         });
 
-        // Load stations for the selected earthquake
-        function loadStationsForEarthquake(event_id) {
-            fetch(`/stations_for_earthquake?event_id=${event_id}`)
+        // Load stations for the selected earthquakes
+        function loadStationsForEarthquakes(event_ids) {
+            // Send request to backend to get stations for all selected earthquakes
+            fetch(`/stations_for_earthquakes?event_ids=${event_ids.join(',')}`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === "success") {
@@ -157,7 +164,7 @@
                     alert(data.message);
                 }
             })
-            .catch(error => console.error("Error loading stations for earthquake:", error));
+            .catch(error => console.error("Error loading stations for earthquakes:", error));
         }
 
         // Load all stations dynamically based on input
@@ -233,8 +240,8 @@
 
         // Plot based on the selected mode
         function plotBasedOnMode() {
-            if (!selectedEarthquakeId) {
-                alert("Please select an earthquake.");
+            if (selectedEarthquakeIds.length === 0) {
+                alert("Please select at least one earthquake.");
                 return;
             }
 
@@ -243,7 +250,7 @@
             if (mode === "selected") {
                 plotAveragedDisplacementForSelectedStations();
             } else if (mode === "all") {
-                plotDistanceVsDisplacement(selectedEarthquakeId);
+                plotDistanceVsDisplacement();
             }
         }
 
@@ -266,10 +273,15 @@
             plotWindow.focus();
         }
 
-        // Plot the distance vs displacement for all stations of the selected earthquake
-        function plotDistanceVsDisplacement(eventId) {
-            // Send request to backend to generate the plot
-            const plotWindow = window.open(`/plot_distance_vs_displacement?event_id=${eventId}`, "PlotWindow", "width=1200,height=700");
+        // Plot the distance vs displacement for all selected earthquakes
+        function plotDistanceVsDisplacement() {
+            if (selectedEarthquakeIds.length === 0) {
+                alert("Please select at least one earthquake.");
+                return;
+            }
+
+            // Send request to backend to generate the plot for multiple earthquakes
+            const plotWindow = window.open(`/plot_distance_vs_displacement?event_ids=${selectedEarthquakeIds.join(',')}`, "PlotWindow", "width=1200,height=700");
 
             if (!plotWindow || plotWindow.closed || typeof plotWindow.closed == 'undefined') {
                 alert("Popup blocker is preventing the plot window from opening. Please allow popups.");

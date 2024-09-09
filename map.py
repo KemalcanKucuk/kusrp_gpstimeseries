@@ -119,57 +119,61 @@ def load_stations():
 
 # Updated Plotting Logic: Distance vs Displacement for Earthquake
 # Updated Plotting Logic: Distance vs Displacement for Earthquake
+from matplotlib import cm
+
 @app.route('/plot_distance_vs_displacement')
 def plot_distance_vs_displacement():
     try:
-        # Retrieve the event ID from the request
-        event_id = request.args.get('event_id')
-        if not event_id:
-            raise ValueError("Event ID is missing")
+        # Retrieve the event IDs from the request
+        event_ids = request.args.get('event_ids')
+        if not event_ids:
+            raise ValueError("Event IDs are missing")
+
+        # Convert the event_ids string to a list
+        event_ids = event_ids.split(',')
 
         # Load the entire combined earthquake data
         combined_df = pd.read_csv(os.path.join(parent_path, 'all_earthquakes.csv'))
 
-        # Filter the combined data for the selected event
-        event_data = combined_df[combined_df['Event ID'] == event_id]
-        if event_data.empty:
-            print(f"No event data found for Event ID: {event_id}")
-            return jsonify({"status": "error", "message": "No data found for the given earthquake event"}), 400
-
-        # Get the station ID and date for this earthquake event
-        stations = event_data['Station ID']
-        event_date = pd.to_datetime(event_data['Date'].iloc[0])
         displacement_dic = {}
 
-        for station_id in stations:
-            print(f"Processing Station ID: {station_id}, Event Date: {event_date}")
+        for event_id in event_ids:
+            # Filter the combined data for the selected event
+            event_data = combined_df[combined_df['Event ID'] == event_id]
+            if event_data.empty:
+                print(f"No event data found for Event ID: {event_id}")
+                continue
 
-            # Find the day before the event date
-            before_event_data = combined_df[
-                (combined_df['Station ID'] == station_id) &
-                (pd.to_datetime(combined_df['Date']) < event_date)
-            ].sort_values('Date').iloc[-1]  # Get the last record before the event date
+            stations = event_data['Station ID']
+            event_date = pd.to_datetime(event_data['Date'].iloc[0])
 
-            # Find the day after the event date
-            after_event_data = combined_df[
-                (combined_df['Station ID'] == station_id) &
-                (pd.to_datetime(combined_df['Date']) > event_date)
-            ].sort_values('Date').iloc[0]  # Get the first record after the event date
+            for station_id in stations:
+                # Find the day before and after the event date, then calculate displacement
+                print(f"Processing Station ID: {station_id}, Event Date: {event_date}")
+                before_event_data = combined_df[
+                    (combined_df['Station ID'] == station_id) &
+                    (pd.to_datetime(combined_df['Date']) < event_date)
+                ].sort_values('Date').iloc[-1]
 
-            # If both before and after event data are found, calculate the displacement
-            if before_event_data is not None and after_event_data is not None:
-                delta_e_displacement = abs(after_event_data['Delta E'] - before_event_data['Delta E'])
-                delta_n_displacement = abs(after_event_data['Delta N'] - before_event_data['Delta N'])
-                delta_v_displacement = abs(after_event_data['Delta V'] - before_event_data['Delta V'])
+                after_event_data = combined_df[
+                    (combined_df['Station ID'] == station_id) &
+                    (pd.to_datetime(combined_df['Date']) > event_date)
+                ].sort_values('Date').iloc[0]
 
-                displacement_data = {
-                    'Station ID': station_id,
-                    'Event ID': event_id,
-                    'Displacement': math.sqrt(delta_e_displacement**2 + delta_n_displacement**2)
-                }
+                if before_event_data is not None and after_event_data is not None:
+                    delta_e_displacement = abs(after_event_data['Delta E'] - before_event_data['Delta E'])
+                    delta_n_displacement = abs(after_event_data['Delta N'] - before_event_data['Delta N'])
+                    delta_v_displacement = abs(after_event_data['Delta V'] - before_event_data['Delta V'])
 
-                # Save the displacement data to the dictionary
-                displacement_dic[(station_id, event_id)] = displacement_data
+                    displacement_data = {
+                        'Station ID': station_id,
+                        'Event ID': event_id,
+                        'Displacement': math.sqrt(delta_e_displacement**2 + delta_n_displacement**2),
+                        'Magnitude': event_data['Event Magnitude'].iloc[0]  # Include magnitude
+                    }
+
+                    # Save the displacement data to the dictionary
+                    displacement_dic[(station_id, event_id)] = displacement_data
 
         # Convert the displacement_dic to a dataframe
         displacement_df = pd.DataFrame.from_dict(displacement_dic, orient='index')
@@ -181,20 +185,28 @@ def plot_distance_vs_displacement():
         merged_df = pd.merge(displacement_df, earthquake_info[['Station ID', 'Event ID', 'Distance from Epicenter']],
                              on=['Station ID', 'Event ID'])
 
-        # Debugging: Print merged data
-        print(merged_df.head())
+        # Get unique magnitudes and create a colormap
+        magnitudes = merged_df['Magnitude'].unique()
+        num_magnitudes = len(magnitudes)
+        cmap = cm.get_cmap('tab20', num_magnitudes)  # Use tab20 colormap for up to 20 magnitudes
+        colors = {magnitude: cmap(i) for i, magnitude in enumerate(magnitudes)}
 
         # Plotting the data: Distance vs Displacement
         fig = Figure(figsize=(10, 6))
         axis = fig.add_subplot(1, 1, 1)
 
-        # Plot distance from epicenter vs displacement
-        axis.scatter(merged_df['Distance from Epicenter'], merged_df['Displacement'], color='blue')
+        # Plot distance from epicenter vs displacement with colors based on magnitude
+        for magnitude in magnitudes:
+            plot_data = merged_df[merged_df['Magnitude'] == magnitude]
+            axis.scatter(plot_data['Distance from Epicenter'], plot_data['Displacement'], color=colors[magnitude], label=f"Magnitude {magnitude}")
 
         # Set labels and title
         axis.set_xlabel('Distance from Epicenter (km)')
         axis.set_ylabel('Displacement (m)')
-        axis.set_title(f'Distance vs Displacement for Earthquake {event_id}')
+        axis.set_title('Distance vs Displacement for Selected Earthquakes')
+
+        # Add a legend to differentiate magnitudes
+        axis.legend()
 
         # Create an output stream and save the plot to it
         output = io.BytesIO()
@@ -206,6 +218,9 @@ def plot_distance_vs_displacement():
     except Exception as e:
         print(f"Error generating distance vs displacement plot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
+
+
+
 
 
 
