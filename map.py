@@ -9,6 +9,8 @@ import preprocessing as pr
 import constants
 import pandas as pd
 import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
 
 import tenv_utils
 
@@ -117,9 +119,11 @@ def load_stations():
         print(f"Error loading stations: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
-# Updated Plotting Logic: Distance vs Displacement for Earthquake
-# Updated Plotting Logic: Distance vs Displacement for Earthquake
+
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import LinearRegression
 from matplotlib import cm
+import numpy as np
 
 @app.route('/plot_distance_vs_displacement')
 def plot_distance_vs_displacement():
@@ -185,6 +189,10 @@ def plot_distance_vs_displacement():
         merged_df = pd.merge(displacement_df, earthquake_info[['Station ID', 'Event ID', 'Distance from Epicenter']],
                              on=['Station ID', 'Event ID'])
 
+        # Handle NaN and infinity values
+        merged_df = merged_df.replace([np.inf, -np.inf], np.nan)  # Replace inf with NaN
+        merged_df = merged_df.dropna(subset=['Distance from Epicenter', 'Displacement'])  # Drop rows with NaN
+
         # Get unique magnitudes and create a colormap
         magnitudes = merged_df['Magnitude'].unique()
         num_magnitudes = len(magnitudes)
@@ -200,12 +208,30 @@ def plot_distance_vs_displacement():
             plot_data = merged_df[merged_df['Magnitude'] == magnitude]
             axis.scatter(plot_data['Distance from Epicenter'], plot_data['Displacement'], color=colors[magnitude], label=f"Magnitude {magnitude}")
 
+            # Polynomial Regression (2nd order) for each earthquake
+            X = plot_data['Distance from Epicenter'].values.reshape(-1, 1)
+            y = plot_data['Displacement'].values.reshape(-1, 1)
+
+            # Apply 2nd-degree polynomial features to X
+            poly = PolynomialFeatures(degree=2)
+            X_poly = poly.fit_transform(X)
+
+            # Fit the polynomial regression model
+            model = LinearRegression()
+            model.fit(X_poly, y)
+
+            # Predict the displacement using the polynomial regression model
+            y_poly_pred = model.predict(X_poly)
+
+            # Plot the polynomial regression curve for the earthquake
+            axis.plot(plot_data['Distance from Epicenter'], y_poly_pred, label=f"Poly Fit Magnitude {magnitude}", color=colors[magnitude])
+
         # Set labels and title
         axis.set_xlabel('Distance from Epicenter (km)')
         axis.set_ylabel('Displacement (m)')
-        axis.set_title('Distance vs Displacement for Selected Earthquakes')
+        axis.set_title('Distance vs Displacement for Selected Earthquakes with Polynomial Regression')
 
-        # Add a legend to differentiate magnitudes
+        # Add a legend to differentiate magnitudes and polynomial regression lines
         axis.legend()
 
         # Create an output stream and save the plot to it
@@ -218,8 +244,6 @@ def plot_distance_vs_displacement():
     except Exception as e:
         print(f"Error generating distance vs displacement plot: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
-
-
 
 
 
