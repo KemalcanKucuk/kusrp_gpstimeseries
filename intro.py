@@ -9,10 +9,9 @@ import tenv_utils
 
 def main():
     hostname = socket.gethostname()
-
+    print(hostname)
     # kendi hostnaminizi print ettirin ona göre path ekleyin.
     if hostname == 'Sarps-MacBook-Pro.local':
-        print("kral hoşgeldin.")
         parent_path = '/Users/sarpvulas/geodesy.unr.edu/gps_timeseries/tenv/'
     elif hostname == 'Kemalcans-MacBook-Pro.local':
         parent_path = '/Users/kemalcankucuk/Documents/kuis-matam-summerproject/geodesy_data'

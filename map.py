@@ -128,6 +128,7 @@ import numpy as np
 @app.route('/plot_distance_vs_displacement')
 def plot_distance_vs_displacement():
     try:
+        
         # Retrieve the event IDs from the request
         event_ids = request.args.get('event_ids')
         if not event_ids:
@@ -224,7 +225,7 @@ def plot_distance_vs_displacement():
             y_poly_pred = model.predict(X_poly)
 
             # Plot the polynomial regression curve for the earthquake
-            axis.plot(plot_data['Distance from Epicenter'], y_poly_pred, label=f"Poly Fit Magnitude {magnitude}", color=colors[magnitude])
+            axis.plot(plot_data['Distance from Epicenter'], y_poly_pred, label=f"Poly Fit Magnitude {magnitude}", color=colors[magnitude], linewidth=3)
 
         # Set labels and title
         axis.set_xlabel('Distance from Epicenter (km)')
