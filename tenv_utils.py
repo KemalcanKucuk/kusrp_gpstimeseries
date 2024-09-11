@@ -5,8 +5,11 @@ gps_timeseries.tenv_utils
 This module provides utility functions that are used to process .tenv files
 """
 from datetime import datetime
+import numpy as np
 import pandas as pd
-
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import make_scorer
 
 def strdate_to_datetime(date_col):
     '''Convert the given date column of a dataframe to datetime format.
@@ -72,7 +75,6 @@ def gap_filter(combined_df, gap_tolerance):
         filtered_df (pd.DataFrame): DataFrame of rows that aren't filtered out by the threshold.
         stations_with_gaps_df (pd.DataFrame): DataFrame of rows that are filtered out by the threshold.
     '''
-    combined_df['Date'] = strdate_to_datetime(combined_df['Date'])
     filtered_list = []
     stations_with_gaps = []
     
@@ -105,23 +107,78 @@ def gap_filter(combined_df, gap_tolerance):
     
     return filtered_df, stations_with_gaps_df
 
-def apply_filtering(combined_df, gap_tolerance=120):
+
+def remove_outliers_lof(df, cols, n_neighbors=20, contamination=0.05):
+    """
+    Remove outliers based on Local Outlier Factor (LOF).
+
+    Args:
+        df (pd.DataFrame): The dataframe to be filtered.
+        cols (list): The list of columns to check for outliers.
+        n_neighbors (int): The number of neighbors to use for LOF.
+        contamination (float): The proportion of outliers in the data set.
+
+    Returns:
+        pd.DataFrame: The dataframe with outliers removed.
+        dict: Dictionary with the count of outliers removed for each station and each column.
+    """
+    outlier_counts = {}
+
+    # To store the indexes of all outliers across columns and stations
+    all_outliers_indexes = pd.Index([])
+
+    for station_id, group in df.groupby('Station ID'):
+        combined_outliers = pd.Series(False, index=group.index)
+
+        for col in cols:
+            lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
+            group[f'{col}_lof'] = lof.fit_predict(group[[col]])
+            outliers = group[f'{col}_lof'] == -1
+            combined_outliers = combined_outliers | outliers
+
+            if station_id not in outlier_counts:
+                outlier_counts[station_id] = {}
+            outlier_counts[station_id][col] = outliers.sum()
+
+        # Collect all outlier indexes to drop later
+        all_outliers_indexes = all_outliers_indexes.union(group[combined_outliers].index)
+
+    # Drop all outliers at once
+    df = df.drop(all_outliers_indexes)
+
+    # Drop the LOF columns if they exist
+    for col in cols:
+        if f'{col}_lof' in df.columns:
+            df = df.drop(columns=[f'{col}_lof'])
+
+    return df, outlier_counts
+
+
+def apply_filtering(combined_df, gap_tolerance=120, outlier_cols=['Delta E', 'Delta N', 'Delta V'], method='lof',
+                    **kwargs):
     '''Outlier points are deleted, series containing huge gaps are eliminated.
 
     Args:
         combined_df (pd.DataFrame): Combined dataframe of all stations.
         gap_tolerance (int, optional): Amount of days to filter out a given station. Defaults to 120.
+        outlier_cols (list, optional): List of columns to check for outliers. Defaults to ['Delta E', 'Delta N', 'Delta V'].
+        method (str, optional): The outlier detection method to use. Defaults to 'lof'.
+        **kwargs: Additional parameters for the outlier detection method.
 
     Returns:
-        tuple: (filtered_df, stations_with_gaps_df)
+        tuple: (filtered_df, stations_with_gaps_df, outlier_counts)
     '''
+    # Filter out stations with gaps exceeding the gap tolerance
     filtered_df, stations_with_gaps_df = gap_filter(combined_df, gap_tolerance)
-    if not combined_df.empty:
-        pass
-        # print(f'station: {self.get_station_name_by_index(0)} \n {combined_df.head()} \n')
-    # @TODO: outlier filtering
 
-    return filtered_df, stations_with_gaps_df
+    outlier_counts = {}
+    if not filtered_df.empty:
+        if method == 'lof':
+            filtered_df, outlier_counts = remove_outliers_lof(filtered_df, outlier_cols, **kwargs)
+        # Add other methods if needed
+
+    return filtered_df, stations_with_gaps_df, outlier_counts
+
 
 def split_combined_df_to_list(combined_df):
     """Split a combined dataframe into a list of dataframes, each corresponding to a unique station. 
@@ -137,3 +194,45 @@ def split_combined_df_to_list(combined_df):
     station_dfs = [group for _, group in combined_df.groupby('Station ID')]
     
     return station_dfs
+
+def custom_lof_scorer(lof_model, X):
+    """
+    Custom scorer for LOF that returns the mean of negative outlier factors.
+    Args:
+        lof_model: An instance of a fitted LOF model.
+        X: Input features.
+    Returns:
+        score: Mean of the negative outlier factors.
+    """
+    return lof_model.negative_outlier_factor_.mean()
+
+def manual_lof_optimization(df, cols, n_neighbors_range, contamination_range, search_type='grid'):
+    """
+    Manually perform optimization for Local Outlier Factor (LOF) parameters.
+    Args:
+        df (pd.DataFrame): The dataframe to be filtered.
+        cols (list): The list of columns to check for outliers.
+        n_neighbors_range (list): List of values to test for `n_neighbors`.
+        contamination_range (list): List of values to test for `contamination`.
+        search_type (str): Type of search, 'grid' or 'random'.
+    Returns:
+        dict: The best parameters found for `n_neighbors` and `contamination`.
+    """
+    X = df[cols].values
+    best_score = -np.inf
+    best_params = {}
+
+    for n_neighbors in n_neighbors_range:
+        for contamination in contamination_range:
+            lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
+            lof.fit(X)
+            score = custom_lof_scorer(lof, X)
+
+            if score > best_score:
+                best_score = score
+                best_params = {'n_neighbors': n_neighbors, 'contamination': contamination}
+
+            print(f"n_neighbors={n_neighbors}, contamination={contamination}, score={score}")
+
+    print(f"Best score: {best_score} with params: {best_params}")
+    return best_params
