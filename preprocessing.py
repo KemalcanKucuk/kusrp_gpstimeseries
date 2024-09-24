@@ -14,7 +14,7 @@ import tenv_utils
 class Preprocessor:
     '''Class that handles the loading and filtering of earthquake data.
     Attributes:
-        parent_path (str): String path containing the IGS14 directory.
+        parent_path (str): String path containing the tenv directory.
         tenv_path (os.path): Path that contains the .tenv files.
         tenvs (list): Path that contains the .tenv files. 
     '''
@@ -22,10 +22,10 @@ class Preprocessor:
     def __init__(self, parent_path):
         '''Initialize Preprocessor singleton on the parent path.
         Args:
-            parent_path (string): String path containing the IGS14 directory.
+            parent_path (string): String path containing the tenv directory.
         '''
         self.parent_path = parent_path
-        self.tenv_path = os.path.join(parent_path, 'IGS14')
+        self.tenv_path = os.path.join(parent_path, 'tenv')
         self.tenvs = sorted([os.path.splitext(f)[0] for f in os.listdir(
             self.tenv_path) if not f.startswith('.')])  # skip hidden files
 
@@ -197,7 +197,7 @@ class Preprocessor:
 
         combined_tenvs_df = pd.concat(all_stations_dfs)
         # combined_df, _, _ = tenv_utils.apply_filtering(tenvs_df, gap_tolerance=gap_tolerance)
-        combined_df = pd.merge(combined_tenvs_df, eqs[['Station ID', 'Date', 'Event ID', 'Event Magnitude']], on=['Station ID', 'Date'], how='left')
+        combined_df = pd.merge(combined_tenvs_df, eqs[['Station ID', 'Date', 'Event ID', 'Event Magnitude', 'Distance from Epicenter']], on=['Station ID', 'Date'], how='left')
         # sanity check
         total_eqs = eqs['Event ID'].nunique()
         loaded_eqs = combined_df['Event ID'].nunique()
@@ -205,7 +205,7 @@ class Preprocessor:
         if save:
             filename = f'loadp{load_percentage}' # @TODO: edit this so that it matches the called method arguments
             # @TODO: gropby event id
-            filename = 'combined.csv'
+            filename = 'combined_tenv.csv'
             filepath = os.path.join(self.parent_path, filename)
             combined_df.to_csv(filepath, index=False)
             print(f"\033[93mINFO: Successfully saved the combined dataframe to {filepath}. \033[0m")
