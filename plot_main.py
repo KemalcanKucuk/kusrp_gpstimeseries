@@ -115,6 +115,6 @@ if __name__ == "__main__":
 
     # Update the CSV file path to the actual file
     csv_file_path = os.path.join(parent_path, 'merged_displacement_data_with_api.csv')
-c
+
     # Call the plot function with the parsed arguments
     plot_distance_vs_displacement(csv_file_path, args.event_ids, args.fit_type)

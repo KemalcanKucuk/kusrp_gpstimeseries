@@ -25,10 +25,9 @@ class Preprocessor:
             parent_path (string): String path containing the tenv directory.
         '''
         self.parent_path = parent_path
-        self.tenv_path = os.path.join(parent_path, 'tenv')
+        self.tenv_path = os.path.join(parent_path, 'IGS14')
         self.tenvs = sorted([os.path.splitext(f)[0] for f in os.listdir(
             self.tenv_path) if not f.startswith('.')])  # skip hidden files
-
     def read_tenv_file(self, stat_name, target_cols=['Station ID', 'Date', 'Delta E', 'Delta N', 'Delta V']):
         '''Read a .tenv file given by filename and return a dataframe with the appropriate columns.
 
